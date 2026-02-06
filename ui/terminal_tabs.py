@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QTabBar,
                              QDialog, QLabel, QComboBox, QLineEdit, QFormLayout, QDialogButtonBox)
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QEvent
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
-from ui.pyte_terminal_widget import PyteTerminalWidget as TerminalWidget
+from ui.terminal_widgets import TerminalWidget
 import os
 
 class RenameableTabBar(QTabBar):
