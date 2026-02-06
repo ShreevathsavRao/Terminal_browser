@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="512" height="512" rx="64" fill="#0d1117"/>
+  
+  <!-- Browser Tab -->
+  <path d="M 128 160 L 384 160 L 400 200 L 400 320 L 128 320 Z" fill="#1a1a1a" stroke="#00ff00" stroke-width="3"/>
+  
+  <!-- Tab Active Indicator -->
+  <rect x="128" y="160" width="272" height="8" fill="#00ff00"/>
+  
+  <!-- "tb" in Tab -->
+  <text x="256" y="260" font-family="'Courier New', 'Monaco', monospace" font-size="100" font-weight="bold" fill="#00ff00" text-anchor="middle" letter-spacing="-6">tb</text>
+  
+  <!-- Terminal Window Frame -->
+  <rect x="128" y="200" width="272" height="120" rx="4" fill="none" stroke="#00ff00" stroke-width="2" stroke-dasharray="4,4" opacity="0.5"/>
+  
+  <!-- Cursor -->
+  <rect x="360" y="240" width="10" height="40" fill="#00ff00" opacity="0.8">
+    <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1s" repeatCount="indefinite"/>
+  </rect>
+</svg>
+
+
+
+

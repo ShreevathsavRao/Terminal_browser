@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="512" height="512" rx="64" fill="#0d1117"/>
+  
+  <!-- Terminal Window Frame -->
+  <rect x="64" y="96" width="384" height="320" rx="8" fill="none" stroke="#00ff00" stroke-width="4"/>
+  
+  <!-- Terminal Window Title Bar (optional) -->
+  <rect x="64" y="96" width="384" height="32" rx="8" fill="#1a1a1a"/>
+  <circle cx="100" cy="112" r="6" fill="#ff5f56"/>
+  <circle cx="128" cy="112" r="6" fill="#ffbd2e"/>
+  <circle cx="156" cy="112" r="6" fill="#27c93f"/>
+  
+  <!-- Tab Indicator (small) -->
+  <rect x="72" y="80" width="80" height="24" rx="4" fill="#1a1a1a" stroke="#00ff00" stroke-width="2"/>
+  
+  <!-- "tb" Monogram -->
+  <text x="256" y="280" font-family="'Courier New', 'Monaco', monospace" font-size="120" font-weight="bold" fill="#00ff00" text-anchor="middle" letter-spacing="-8">tb</text>
+  
+  <!-- Cursor Blink -->
+  <rect x="376" y="240" width="12" height="40" fill="#00ff00" opacity="0.8">
+    <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1s" repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- Terminal Prompt Indicator (optional) -->
+  <text x="88" y="280" font-family="'Courier New', 'Monaco', monospace" font-size="48" fill="#888888">$</text>
+</svg>
+
+
+
+
