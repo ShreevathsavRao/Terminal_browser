@@ -12,12 +12,18 @@ Key Design Principles:
 - Common interface hides platform-specific details
 """
 
-from abc import ABC, abstractmethod
+from abc import ABCMeta, abstractmethod
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtCore import pyqtSignal
 
 
-class BaseTerminalWidget(QWidget, ABC):
+# Create a compatible metaclass for QWidget + ABC
+class QABCMeta(type(QWidget), ABCMeta):
+    """Metaclass that combines PyQt's metaclass with ABC's metaclass"""
+    pass
+
+
+class BaseTerminalWidget(QWidget, metaclass=QABCMeta):
     """
     Abstract base class for platform-specific terminal widget implementations.
     

@@ -73,23 +73,54 @@ class WindowsProcessReader(QThread):
 
 # Import the same Canvas and Scrollbar classes from unix_terminal_widget
 # These are UI components that don't depend on PTY vs subprocess
-try:
-    from ui.terminal_widgets.unix_terminal_widget import TerminalCanvas, TerminalScrollbar
-except ImportError:
-    # Fallback: define minimal versions if unix_terminal_widget not available
-    class TerminalCanvas(QWidget):
-        def __init__(self, parent=None):
-            super().__init__(parent)
-        
-        def set_terminal_canvas(self, canvas):
-            pass
-        
-        def paintEvent(self, event):
-            pass
+# For now, use simple QWidget placeholders - we'll enhance these later
+class TerminalCanvas(QWidget):
+    """Simple canvas for displaying terminal content"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.terminal = parent
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setMouseTracking(True)
     
-    class TerminalScrollbar(QScrollArea):
-        def __init__(self, parent=None):
-            super().__init__(parent)
+    def paintEvent(self, event):
+        """Paint terminal content"""
+        if not hasattr(self, 'terminal') or not self.terminal:
+            return
+        
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(0, 0, 0))
+        
+        # Simple text rendering - just display what's in the pyte screen
+        if hasattr(self.terminal, 'screen') and hasattr(self.terminal, 'char_height'):
+            painter.setFont(self.terminal.font())
+            painter.setPen(QColor(255, 255, 255))
+            
+            y_offset = 10
+            try:
+                for y in range(self.terminal.rows):
+                    # Get line from pyte screen buffer
+                    line_chars = []
+                    for x in range(self.terminal.cols):
+                        try:
+                            char = self.terminal.screen.buffer[y][x]
+                            line_chars.append(char.data if hasattr(char, 'data') else str(char))
+                        except (IndexError, KeyError):
+                            line_chars.append(' ')
+                    
+                    text = ''.join(line_chars).rstrip()
+                    if text:  # Only draw non-empty lines
+                        painter.drawText(10, y_offset, text)
+                    y_offset += self.terminal.char_height
+            except Exception as e:
+                if UI_DEBUG:
+                    print(f"[TerminalCanvas] Paint error: {e}")
+
+
+class TerminalScrollbar(QScrollArea):
+    """Simple scrollbar placeholder"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.hide()  # Hide for now - will implement properly later
 
 
 class WindowsTerminalWidget(BaseTerminalWidget):
@@ -382,13 +413,12 @@ class WindowsTerminalWidget(BaseTerminalWidget):
     
     def force_scroll_to_bottom(self):
         """Scroll to bottom of terminal"""
-        if hasattr(self, '_scrollbar'):
-            self._scrollbar.setValue(self._scrollbar.maximum())
+        # For now, do nothing - will implement scrolling later
+        pass
     
     def is_at_bottom(self):
         """Check if scrolled to bottom"""
-        if hasattr(self, '_scrollbar'):
-            return self._scrollbar.value() >= self._scrollbar.maximum() - 10
+        # For now, always return True
         return True
     
     def close_terminal(self):
