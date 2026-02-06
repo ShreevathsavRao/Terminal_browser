@@ -97,6 +97,15 @@ def main():
     # Initialize debug logging first
     init_debug_logging()
     
+    # Windows-specific: Set app ID for taskbar icon
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            myappid = 'TerminalBrowser.TerminalBrowser.1.0'  # arbitrary string
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except:
+            pass
+    
     # Enable High DPI scaling
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)

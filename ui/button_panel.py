@@ -270,12 +270,12 @@ class ButtonPanel(QWidget):
         
         # Create font metrics for measurements
         header_font = QFont()
-        header_font.setPointSize(12)
+        header_font.setPointSize(10)  # Reduced from 12 to match macOS
         header_font.setBold(True)
         header_metrics = QFontMetrics(header_font)
         
         button_font = QFont()
-        button_font.setPointSize(11)
+        button_font.setPointSize(9)  # Reduced from 11 to match macOS
         button_metrics = QFontMetrics(button_font)
         
         # Calculate vertical tab bar width (left sidebar)
@@ -388,8 +388,9 @@ class ButtonPanel(QWidget):
                 background-color: #2196F3;
                 color: white;
                 border: none;
-                padding: 8px;
+                padding: 6px;
                 font-weight: bold;
+                font-size: 11px;
                 border-radius: 4px;
             }
             QPushButton:hover {
@@ -667,15 +668,16 @@ class ButtonPanel(QWidget):
         
         # Execute button
         exec_btn = QPushButton(name)
-        exec_btn.setMinimumHeight(35)
+        exec_btn.setMinimumHeight(28)  # Reduced from 35 to match macOS
         exec_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
                 color: white;
                 border: none;
-                padding: 8px;
+                padding: 6px;
                 border-radius: 3px;
                 text-align: left;
+                font-size: 11px;
             }
             QPushButton:hover {
                 background-color: #45a049;
