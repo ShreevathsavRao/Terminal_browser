@@ -9,14 +9,14 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from PyQt5.QtWidgets import QApplication
-from ui.pyte_terminal_widget import PyteTerminalWidget
+from ui.terminal_widgets import TerminalWidget
 
 def test_get_text_at_pos():
     """Test the get_text_at_pos method"""
     app = QApplication(sys.argv)
     
     # Create a terminal widget
-    terminal = PyteTerminalWidget()
+    terminal = TerminalWidget()
     
     # Simulate some output with file names
     test_lines = [
