@@ -62,7 +62,11 @@ class MainWindow(QMainWindow):
             # Running as a script
             base_path = Path(__file__).parent.parent
         
-        logo_path = base_path / 'assets' / 'logo_tb_terminal.svg'
+        # Try PNG first, then SVG
+        logo_path = base_path / 'assets' / 'logo_tb_terminal.png'
+        if not logo_path.exists():
+            logo_path = base_path / 'assets' / 'logo_tb_terminal.svg'
+        
         if logo_path.exists():
             self.setWindowIcon(QIcon(str(logo_path)))
         
