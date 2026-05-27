@@ -1,8 +1,9 @@
 """Top tab bar for terminals (browser-like)"""
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QTabBar, 
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QTabBar,
                              QPushButton, QHBoxLayout, QInputDialog, QMenu, QAction,
-                             QDialog, QLabel, QComboBox, QLineEdit, QFormLayout, QDialogButtonBox)
+                             QDialog, QLabel, QComboBox, QLineEdit, QFormLayout,
+                             QDialogButtonBox, QListWidget, QListWidgetItem)
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QEvent
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
 from ui.pyte_terminal_widget import PyteTerminalWidget as TerminalWidget
@@ -31,103 +32,211 @@ class RenameableTabBar(QTabBar):
         super().mousePressEvent(event)
 
 class NewTerminalDialog(QDialog):
-    """Dialog to configure new terminal"""
-    
+    """Dialog to configure a new terminal or tool tab."""
+
     def __init__(self, parent=None, tab_number=1):
         super().__init__(parent)
-        self.setWindowTitle("New Terminal")
-        self.setMinimumWidth(350)
-        self.init_ui(tab_number)
-        
-    def init_ui(self, tab_number):
-        """Initialize the UI"""
+        self.setWindowTitle("New Tab")
+        self.setMinimumWidth(420)
+        self._type = 'shell'   # 'shell' or 'tool'
+        self._tool = None      # e.g. 'git'
+        self._init_ui(tab_number)
+
+    def _init_ui(self, tab_number):
         layout = QVBoxLayout(self)
-        
-        # Form layout
-        form = QFormLayout()
-        
-        # Tab name
+        layout.setSpacing(8)
+
+        # Tab name row
+        name_row = QHBoxLayout()
+        name_lbl = QLabel("Tab Name:")
+        name_lbl.setStyleSheet("color:#cccccc;")
         self.name_input = QLineEdit(f"Tab {tab_number}")
-        form.addRow("Tab Name:", self.name_input)
-        
-        # Shell type
-        self.shell_combo = QComboBox()
-        
-        # Detect available shells
+        self.name_input.setStyleSheet(
+            "background:#2d2d2d; color:#cccccc; border:1px solid #555; "
+            "border-radius:3px; padding:4px;"
+        )
+        name_row.addWidget(name_lbl)
+        name_row.addWidget(self.name_input)
+        layout.addLayout(name_row)
+
+        # Tab switcher: Shells | Tools
+        self.type_tabs = QTabWidget()
+        self.type_tabs.setStyleSheet("""
+            QTabWidget::pane { background:#1e1e1e; border:1px solid #3c3c3c; }
+            QTabBar::tab { background:#2d2d2d; color:#888; padding:6px 18px;
+                           border:none; margin-right:2px; }
+            QTabBar::tab:selected { background:#1e1e1e; color:#cccccc;
+                                    border-bottom:2px solid #4ec9b0; }
+            QTabBar::tab:hover { background:#3c3c3c; color:#cccccc; }
+        """)
+
+        # ── Shells tab ────────────────────────────────────────────────────────
+        shells_widget = QWidget()
+        sl = QVBoxLayout(shells_widget)
+        sl.setContentsMargins(8, 8, 8, 8)
+        self.shell_list = QListWidget()
+        self.shell_list.setStyleSheet(
+            "QListWidget { background:#1e1e1e; color:#cccccc; border:none; }"
+            "QListWidget::item:selected { background:#094771; }"
+            "QListWidget::item:hover { background:#2a2d2e; }"
+        )
+        self.shell_list.setSpacing(2)
         available_shells = self.detect_shells()
-        self.shell_combo.addItems(available_shells)
-        
-        # Set default to user's shell or zsh/bash
+        for s in available_shells:
+            self.shell_list.addItem(s)
+        # Pre-select user's default shell
         default_shell = os.environ.get('SHELL', '/bin/bash')
         shell_name = os.path.basename(default_shell)
-        index = self.shell_combo.findText(shell_name, Qt.MatchContains)
-        if index >= 0:
-            self.shell_combo.setCurrentIndex(index)
-        
-        form.addRow("Shell Type:", self.shell_combo)
-        
-        layout.addLayout(form)
-        
-        # Buttons
+        matches = self.shell_list.findItems(shell_name, Qt.MatchContains)
+        if matches:
+            self.shell_list.setCurrentItem(matches[0])
+        elif self.shell_list.count():
+            self.shell_list.setCurrentRow(0)
+        self.shell_list.itemDoubleClicked.connect(self._accept_shell)
+        sl.addWidget(self.shell_list)
+        self.type_tabs.addTab(shells_widget, "🖥  Shells")
+
+        # ── Tools tab ─────────────────────────────────────────────────────────
+        tools_widget = QWidget()
+        tl = QVBoxLayout(tools_widget)
+        tl.setContentsMargins(8, 8, 8, 8)
+        self.tool_list = QListWidget()
+        self.tool_list.setStyleSheet(
+            "QListWidget { background:#1e1e1e; color:#cccccc; border:none; }"
+            "QListWidget::item:selected { background:#094771; }"
+            "QListWidget::item:hover { background:#2a2d2e; }"
+        )
+        self.tool_list.setSpacing(2)
+        # Each entry: (display text, tool key)
+        self._tools = [("⎇  Git", "git")]
+        for display, _ in self._tools:
+            item = QListWidgetItem(display)
+            item.setForeground(QColor("#4ec9b0"))
+            self.tool_list.addItem(item)
+        if self.tool_list.count():
+            self.tool_list.setCurrentRow(0)
+        self.tool_list.itemDoubleClicked.connect(self._accept_tool)
+        tl.addWidget(self.tool_list)
+        self.type_tabs.addTab(tools_widget, "🔧  Tools")
+
+        layout.addWidget(self.type_tabs)
+
+        # OK / Cancel
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._on_ok)
         buttons.rejected.connect(self.reject)
-        
         buttons.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                padding: 6px 15px;
-                border-radius: 3px;
+                background-color: #4CAF50; color: white; border: none;
+                padding: 6px 15px; border-radius: 3px;
             }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
+            QPushButton:hover { background-color: #45a049; }
         """)
-        
         layout.addWidget(buttons)
-    
+
+    def _accept_shell(self):
+        self._type = 'shell'
+        self.accept()
+
+    def _accept_tool(self):
+        self._type = 'tool'
+        idx = self.tool_list.currentRow()
+        self._tool = self._tools[idx][1] if idx >= 0 else None
+        self.accept()
+
+    def _on_ok(self):
+        if self.type_tabs.currentIndex() == 0:
+            self._accept_shell()
+        else:
+            self._accept_tool()
+
     def detect_shells(self):
-        """Detect available shells on the system"""
-        shells = []
-        common_shells = [
-            ('/bin/bash', 'bash'),
-            ('/bin/zsh', 'zsh'),
-            ('/bin/sh', 'sh'),
-            ('/bin/fish', 'fish'),
-            ('/bin/ksh', 'ksh'),
-            ('/bin/tcsh', 'tcsh'),
-            ('/usr/bin/bash', 'bash'),
-            ('/usr/bin/zsh', 'zsh'),
-            ('/usr/local/bin/fish', 'fish'),
+        """Detect available shells dynamically — no hardcoded name or path list.
+
+        Sources:
+          1. /etc/shells — OS-maintained authoritative registry (trusted as-is).
+          2. Every executable in PATH dirs + common extra locations that passes
+             `<binary> -c 'true'` within 1 s — the definitive test that something
+             is an interactive shell, filtering out ssh, hash, chsh, jshell, etc.
+        """
+        import subprocess, re
+
+        found = []
+        seen_paths = set()
+        # Candidates from PATH must have a plausible shell-like name
+        # (ends with 'sh', or contains 'shell', 'fish', 'nu', 'ion', 'xonsh')
+        CANDIDATE_RE = re.compile(
+            r'sh$|shell|^fish$|^nu$|^ion$|^xonsh$|^elvish$', re.IGNORECASE
+        )
+
+        def is_real_shell(path):
+            """Return True only if the binary honours `<path> -c 'exit 42'` → code 42.
+            Shells implement 'exit' as a builtin; unrelated tools (tclsh, ssh,
+            jshell, …) either fail on -c or exit with a different code."""
+            try:
+                r = subprocess.run(
+                    [path, '-c', 'exit 42'],
+                    timeout=1, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+                return r.returncode == 42
+            except (OSError, subprocess.TimeoutExpired):
+                return False
+
+        def add(path, verify=False):
+            real = os.path.realpath(path)
+            if real in seen_paths or not os.access(real, os.X_OK):
+                return
+            if verify and not is_real_shell(real):
+                return
+            seen_paths.add(real)
+            found.append((os.path.basename(path), real))
+
+        # 1. /etc/shells — authoritative; trust without re-verification
+        try:
+            with open('/etc/shells') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and os.path.isfile(line):
+                        add(line)
+        except OSError:
+            pass
+
+        # 2. Scan PATH + extra dirs for anything that looks like a shell name
+        #    and actually behaves like one
+        path_dirs = os.environ.get('PATH', '').split(os.pathsep)
+        extra_dirs = [
+            '/bin', '/usr/bin', '/usr/local/bin',
+            '/opt/homebrew/bin', '/opt/local/bin',
+            '/usr/pkg/bin', '/snap/bin',
         ]
-        
-        seen = set()
-        for path, name in common_shells:
-            if os.path.exists(path) and name not in seen:
-                shells.append(f"{name} ({path})")
-                seen.add(name)
-        
-        # If no shells found, add defaults
-        if not shells:
-            shells = ['bash (/bin/bash)', 'sh (/bin/sh)']
-        
-        return shells
+        for d in list(dict.fromkeys(path_dirs + extra_dirs)):
+            if not os.path.isdir(d):
+                continue
+            try:
+                for entry in os.scandir(d):
+                    if entry.is_file(follow_symlinks=True) and CANDIDATE_RE.search(entry.name):
+                        add(entry.path, verify=True)
+            except OSError:
+                pass
+
+        if not found:
+            found = [('bash', '/bin/bash'), ('sh', '/bin/sh')]
+
+        return [f"{name} ({path})" for name, path in found]
     
     def get_data(self):
-        """Get the dialog data"""
-        shell_text = self.shell_combo.currentText()
-        # Extract path from "name (path)" format
+        """Return dialog data. 'type' is 'shell' or 'tool'."""
+        name = self.name_input.text()
+        if self._type == 'tool':
+            return {'name': name, 'type': 'tool', 'tool': self._tool, 'shell': None}
+        # Shell path extracted from "name (path)" format
+        item = self.shell_list.currentItem()
+        shell_text = item.text() if item else '/bin/bash'
         if '(' in shell_text and ')' in shell_text:
-            shell_path = shell_text.split('(')[1].split(')')[0]
+            shell_path = shell_text.split('(')[1].rstrip(')')
         else:
             shell_path = '/bin/bash'
-        
-        return {
-            'name': self.name_input.text(),
-            'shell': shell_path
-        }
+        return {'name': name, 'type': 'shell', 'shell': shell_path, 'tool': None}
 
 class TerminalTabs(QWidget):
     """Browser-like terminal tabs"""
@@ -474,6 +583,23 @@ class TerminalTabs(QWidget):
         if hasattr(self, 'hide_qt_scroll_buttons'):
             QTimer.singleShot(100, self.hide_qt_scroll_buttons)
         
+    def _open_tool_tab(self, name: str, tool: str):
+        """Open a tool (non-terminal) as a tab in the tab widget."""
+        if tool == 'git':
+            from ui.git_panel import GitPanel
+            # Reuse existing git tab if already open
+            for i in range(self.tab_widget.count()):
+                if self.tab_widget.tabText(i).startswith("⎇"):
+                    self.tab_widget.setCurrentIndex(i)
+                    return self.tab_widget.widget(i)
+            git_panel = GitPanel()
+            idx = self.tab_widget.addTab(git_panel, f"⎇  {name}")
+            self.tab_widget.setCurrentIndex(idx)
+            self.tab_widget.tabBar().setTabButton(idx, QTabBar.RightSide, self.create_close_button())
+            git_panel.refresh_all()
+            return git_panel
+        return None
+
     def add_tab(self, name=None, shell=None, skip_save=False):
         """Add a new terminal tab"""
         if not self.current_group:
@@ -491,14 +617,17 @@ class TerminalTabs(QWidget):
                 data = dialog.get_data()
                 name = data['name']
                 shell = data['shell']
+                # Handle tool tabs
+                if data.get('type') == 'tool':
+                    return self._open_tool_tab(name, data.get('tool'))
             else:
                 return None  # User cancelled
         else:
             self.tab_counter += 1
-        
+
         if name is None:
             name = f"Tab {self.tab_counter}"
-        
+
         # Create terminal with specified shell and preferences
         from core.preferences_manager import PreferencesManager
         prefs_manager = PreferencesManager()
@@ -789,23 +918,30 @@ class TerminalTabs(QWidget):
                 terminal_widget.setFocusPolicy(Qt.NoFocus)
                 if hasattr(terminal_widget, 'resize_enabled'):
                     terminal_widget.resize_enabled = False
-                
-                # Connect to session recorder for command capture (if not already connected)
-                if hasattr(self, 'command_executed_callback'):
-                    try:
-                        terminal_widget.command_executed.disconnect()
-                    except:
-                        pass  # Wasn't connected
-                    terminal_widget.command_executed.connect(self.command_executed_callback)
-                
-                shell_name = os.path.basename(shell) if shell else "bash"
-                tab_label = f"{tab_name} [{shell_name}]"
+
+                from ui.git_panel import GitPanel
+                if isinstance(terminal_widget, GitPanel):
+                    tab_label = tab_name
+                else:
+                    # Connect to session recorder for command capture (if not already connected)
+                    if hasattr(self, 'command_executed_callback'):
+                        try:
+                            terminal_widget.command_executed.disconnect()
+                        except:
+                            pass
+                        terminal_widget.command_executed.connect(self.command_executed_callback)
+                    shell_name = os.path.basename(shell) if shell else "bash"
+                    tab_label = f"{tab_name} [{shell_name}]"
+
                 index = self.tab_widget.addTab(terminal_widget, tab_label)
                 self.tab_widget.tabBar().setTabButton(index, QTabBar.RightSide, self.create_close_button())
         else:
             # Create new tabs
             for tab_data in self.tabs_per_group[group_name]:
-                self.add_tab(tab_data['name'], tab_data.get('shell', '/bin/bash'), skip_save=True)
+                if tab_data.get('tab_type') == 'git':
+                    self._open_tool_tab(tab_data.get('name', 'Git'), 'git')
+                else:
+                    self.add_tab(tab_data['name'], tab_data.get('shell', '/bin/bash'), skip_save=True)
         
         # Re-enable signals and updates
         self.tab_widget.blockSignals(False)
@@ -899,15 +1035,23 @@ class TerminalTabs(QWidget):
             widget = self.tab_widget.widget(i)
             if widget:
                 tab_text = self.tab_widget.tabText(i)
+
+                # Detect git panel tabs
+                from ui.git_panel import GitPanel
+                if isinstance(widget, GitPanel):
+                    # Strip the "⎇  " prefix so _open_tool_tab doesn't double-add it
+                    clean = tab_text.strip().lstrip("⎇").strip()
+                    tabs_info.append({'name': clean or 'Git', 'tab_type': 'git'})
+                    widgets_cache.append((clean or 'Git', None, widget))
+                    continue
+
                 shell = widget.shell if hasattr(widget, 'shell') else '/bin/bash'
-                
+
                 # Strip shell indicator from name (e.g., "Tab 1 [zsh]" -> "Tab 1")
-                # This prevents duplication when restoring
                 base_name = tab_text
                 if '[' in tab_text and ']' in tab_text:
-                    # Remove the last [shell] indicator
                     base_name = tab_text.rsplit('[', 1)[0].strip()
-                
+
                 tabs_info.append({
                     'name': base_name,
                     'shell': shell

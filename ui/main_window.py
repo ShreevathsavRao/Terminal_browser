@@ -9,6 +9,7 @@ from PyQt5.QtGui import QIcon, QKeySequence
 from ui.terminal_group_panel import TerminalGroupPanel
 from ui.button_panel import ButtonPanel
 from ui.terminal_tabs import TerminalTabs
+from ui.git_panel import GitPanel
 from ui.preferences_dialog import PreferencesDialog
 from ui.help_dialog import HelpDialog
 from ui.command_history_dialog import CommandHistoryDialog
@@ -151,6 +152,11 @@ class MainWindow(QMainWindow):
         toggle_right_action = QAction("Toggle Buttons Panel", self)
         toggle_right_action.triggered.connect(lambda: self.toggle_right_button.click())
         view_menu.addAction(toggle_right_action)
+
+        toggle_git_action = QAction("Toggle Git Panel", self)
+        toggle_git_action.setShortcut("Ctrl+Shift+G")
+        toggle_git_action.triggered.connect(self.toggle_git_panel)
+        view_menu.addAction(toggle_git_action)
         
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -658,6 +664,12 @@ class MainWindow(QMainWindow):
         # Right panel - Button Panel
         self.button_panel = ButtonPanel()
         self.main_splitter.addWidget(self.button_panel)
+
+        # Git panel (hidden by default, shown via Ctrl+Shift+G)
+        self.git_panel = GitPanel()
+        self.git_panel.setMinimumWidth(600)
+        self.git_panel.setVisible(False)
+        self.main_splitter.addWidget(self.git_panel)
         
         # Set minimum widths for panels to ensure content visibility
         # Group panel and button panel widths are calculated dynamically based on content
@@ -814,6 +826,28 @@ class MainWindow(QMainWindow):
             # Use bundled assets (will work in both dev and packaged app)
             self.bottom_connection_logo = ConnectionLogoWidget(size=45)
 
+            # Focus area indicator
+            self.focus_label = QPushButton("⬤ Focus: —")
+            self.focus_label.setEnabled(False)
+            self.focus_label.setToolTip("Currently focused area of the application")
+            self.focus_label.setStyleSheet("""
+                QPushButton {
+                    background-color: #2d2d2d;
+                    color: #9cdcfe;
+                    border: 1px solid #555;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                    font-size: 11px;
+                }
+                QPushButton:disabled {
+                    color: #9cdcfe;
+                    background-color: #2d2d2d;
+                }
+            """)
+            bottom_layout.addWidget(self.focus_label)
+            from PyQt5.QtWidgets import QApplication as _QApp
+            _QApp.instance().focusChanged.connect(self._on_focus_changed)
+
             # Add queue status button
             self.queue_status_button = QPushButton("📋 Queues (0)")
             self.queue_status_button.clicked.connect(self.show_queue_status)
@@ -925,10 +959,38 @@ class MainWindow(QMainWindow):
         
     def on_global_font_size_changed(self, size):
         """Handle global font size spinbox change"""
-        current_terminal = self.terminal_tabs.get_current_terminal()
-        if current_terminal and hasattr(current_terminal, 'font_size_spin'):
-            # Update the current terminal's font size spinbox
-            current_terminal.font_size_spin.setValue(size)
+        from PyQt5.QtGui import QFont as _QFont
+        current_widget = self.terminal_tabs.get_current_terminal()
+        if current_widget is None:
+            return
+        # Terminal tab
+        if hasattr(current_widget, 'font_size_spin'):
+            current_widget.font_size_spin.setValue(size)
+            return
+        # Git panel tab — apply font size to its text components
+        from ui.git_panel import GitPanel as _GitPanel
+        if isinstance(current_widget, _GitPanel):
+            mono = _QFont("Menlo", size)
+            # Graph canvas font
+            if hasattr(current_widget, '_graph_view'):
+                gv = current_widget._graph_view
+                if hasattr(gv, 'canvas'):
+                    gv.canvas._font = mono
+                    gv.canvas._bold_font = _QFont("Menlo", size)
+                    gv.canvas._bold_font.setBold(True)
+                    from PyQt5.QtGui import QFontMetrics
+                    gv.canvas._fm = QFontMetrics(mono)
+                    gv.canvas.update()
+                if hasattr(gv, 'detail'):
+                    gv.detail.diff_view.setFont(mono)
+                    gv.detail.file_tree.setFont(mono)
+            # Commit panel
+            if hasattr(current_widget, '_commit_panel'):
+                cp = current_widget._commit_panel
+                if hasattr(cp, 'diff_view'):
+                    cp.diff_view.setFont(mono)
+                if hasattr(cp, 'msg_box'):
+                    cp.msg_box.setFont(mono)
     
     def open_history_viewer(self):
         """Open history viewer for current terminal"""
@@ -1583,6 +1645,72 @@ class MainWindow(QMainWindow):
         self.resize_enable_timer.timeout.connect(lambda: self.safe_enable_terminal_resize())
         self.resize_enable_timer.start(200)
         
+    def _on_focus_changed(self, old, new):
+        """Update the focus indicator label whenever Qt focus changes."""
+        if not hasattr(self, 'focus_label') or new is None:
+            return
+        # Walk up the widget tree to identify the major area
+        w = new
+        area = None
+        while w is not None:
+            if w is getattr(self, 'git_panel', None):
+                # Narrow down to which git tab
+                if hasattr(self.git_panel, '_tabs'):
+                    tab = self.git_panel._tabs.tabText(self.git_panel._tabs.currentIndex())
+                    area = f"Git Panel — {tab.strip()}"
+                else:
+                    area = "Git Panel"
+                break
+            if w is getattr(self, 'terminal_group_panel', None):
+                area = "Groups Panel"
+                break
+            if w is getattr(self, 'button_panel', None):
+                area = "Button Panel"
+                break
+            tt = getattr(self, 'terminal_tabs', None)
+            if w is tt or (tt is not None and w is getattr(tt, 'tab_widget', None)):
+                try:
+                    tw = tt.tab_widget
+                    tab_name = tw.tabText(tw.currentIndex())
+                except Exception:
+                    tab_name = ""
+                area = f"Terminal — {tab_name}" if tab_name else "Terminal"
+                break
+            w = w.parent()
+
+        if area is None:
+            # Generic fallback: use the class name of the focused widget
+            area = type(new).__name__
+
+        is_terminal = area.startswith("Terminal")
+        color = "#9cdcfe" if is_terminal else "#dcdcaa"
+        self.focus_label.setText(f"⬤ Focus: {area}")
+        self.focus_label.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #2d2d2d;
+                color: {color};
+                border: 1px solid #555;
+                padding: 5px 10px;
+                border-radius: 3px;
+                font-size: 11px;
+            }}
+            QPushButton:disabled {{
+                color: {color};
+                background-color: #2d2d2d;
+            }}
+        """)
+
+    def toggle_git_panel(self):
+        """Toggle the Git panel (Ctrl+Shift+G)."""
+        visible = self.git_panel.isVisible()
+        if visible:
+            self.git_panel.setVisible(False)
+            self.git_panel.setMaximumWidth(0)
+        else:
+            self.git_panel.setMaximumWidth(16777215)
+            self.git_panel.setVisible(True)
+            self.git_panel.refresh_all()
+
     def on_terminal_command_executed(self, command):
         """Handle command executed from terminal (typed directly)"""
         

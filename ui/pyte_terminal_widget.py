@@ -29,6 +29,7 @@ import socket
 UI_DEBUG = False
 
 
+
 class PTYReader(QThread):
     """Thread to read from PTY master"""
     
@@ -277,12 +278,17 @@ class TerminalCanvas(QWidget):
             # Widget has been deleted, ignore the event
             pass
     
+    # Extra vertical padding between rows (pixels).  Without this, the `─`
+    # box-drawing glyph (rendered at cell mid-height) visually bleeds into
+    # the text of adjacent rows, producing a strikethrough-like illusion.
+    LINE_SPACING = 4
+
     def update_char_size(self):
         """Update character width and height based on font"""
         metrics = QFontMetrics(self.font)
         self.char_width = metrics.horizontalAdvance('M')
-        self.char_height = metrics.height()
-        self.char_ascent = metrics.ascent()
+        self.char_height = metrics.height() + self.LINE_SPACING
+        self.char_ascent = metrics.ascent() + self.LINE_SPACING // 2
     
     def get_opposite_color(self, color):
         """Calculate the opposite (inverted) color
@@ -425,8 +431,11 @@ class TerminalCanvas(QWidget):
             # Ensure canvas is at least as large as the viewport to capture all clicks
             # But allow it to grow wider for horizontal scrolling
             if self.parent_terminal and hasattr(self.parent_terminal, 'scroll_area'):
-                viewport_width = self.parent_terminal.scroll_area.viewport().width()
-                viewport_height = self.parent_terminal.scroll_area.viewport().height()
+                try:
+                    viewport_width = self.parent_terminal.scroll_area.viewport().width()
+                    viewport_height = self.parent_terminal.scroll_area.viewport().height()
+                except RuntimeError:
+                    return  # scroll_area deleted; skip resize
                 # Ensure minimum width is viewport width, but allow wider for content
                 width = max(width, viewport_width)
                 height = max(height, viewport_height)
@@ -444,7 +453,21 @@ class TerminalCanvas(QWidget):
             return ' '
     
     def get_color(self, color_name, is_bold=False):
-        """Get QColor from color name"""
+        """Get QColor from a named color or a pyte hex string (256-color / truecolor).
+
+        pyte stores both 256-color indices and 24-bit truecolor as 6-char
+        lowercase hex strings, e.g. 'ffaf00' for index 214 (Claude orange).
+        Named colors ('red', 'default', …) are never 6 characters, so the
+        length check is a safe fast-path discriminator.
+        """
+        if isinstance(color_name, str) and len(color_name) == 6:
+            try:
+                r = int(color_name[0:2], 16)
+                g = int(color_name[2:4], 16)
+                b = int(color_name[4:6], 16)
+                return QColor(r, g, b)
+            except ValueError:
+                pass
         if is_bold and color_name in self.bright_color_map:
             return self.bright_color_map[color_name]
         elif color_name in self.color_map:
@@ -2563,8 +2586,8 @@ class PyteTerminalWidget(QWidget):
         self.current_match_index = -1  # Current match being viewed
         self.search_active = False  # True when search widget is open and user is navigating results
         
+        self._shell_started = False  # start_shell() deferred until first showEvent
         self.init_ui()
-        self.start_shell()
 
         # Network state
         self._online = True
@@ -2754,8 +2777,17 @@ class PyteTerminalWidget(QWidget):
     def showEvent(self, event):
         """Handle widget show event"""
         super().showEvent(event)
-        # Update PTY size when widget becomes visible
-        QTimer.singleShot(100, self.update_pty_size_from_widget)
+        # Update PTY size when widget becomes visible, then start the shell
+        # (starting AFTER resize ensures the shell sees the correct terminal
+        # dimensions on launch, preventing Claude Code / Ink-based apps from
+        # rendering their streaming UI at the wrong width and leaving ghost
+        # separator lines frozen in pyte's history buffer).
+        if not self._shell_started:
+            self._shell_started = True
+            QTimer.singleShot(80, self.update_pty_size_from_widget)
+            QTimer.singleShot(160, self.start_shell)
+        else:
+            QTimer.singleShot(100, self.update_pty_size_from_widget)
         # Ensure canvas has focus
         self.canvas.setFocus()
         
@@ -3478,7 +3510,7 @@ class PyteTerminalWidget(QWidget):
         if self.master_fd is not None:
             try:
                 os.write(self.master_fd, data.encode('utf-8'))
-            except OSError as e:
+            except OSError:
                 pass
     
     def execute_command(self, command, env_vars=None):
@@ -3699,7 +3731,31 @@ class PyteTerminalWidget(QWidget):
         """Process buffered output (async) - reduces UI blocking"""
         if not self._output_buffer:
             return
-        
+
+        # Re-entrancy guard: processEvents() can trigger a second flush while
+        # the first is still running, causing use-after-free on Qt objects.
+        if getattr(self, '_flushing', False):
+            return
+        self._flushing = True
+        try:
+            self._flush_output_buffer_inner()
+        finally:
+            self._flushing = False
+
+    def _flush_output_buffer_inner(self):
+        """Inner implementation — called only when not already flushing."""
+        if not self._output_buffer:
+            return
+
+        # Guard: scroll_area may have been deleted if the tab was closed
+        # while a QTimer-triggered flush was still pending.
+        try:
+            if self.scroll_area is None:
+                return
+            _ = self.scroll_area.verticalScrollBar()  # will raise if C++ obj deleted
+        except RuntimeError:
+            return
+
         try:
             # Combine all buffered text
             text = ''.join(self._output_buffer)
@@ -3811,12 +3867,9 @@ class PyteTerminalWidget(QWidget):
                                         not self.user_has_scrolled and 
                                         not self.search_active)
             
-            # Feed data to pyte stream with real-time line-by-line scrolling
             if should_do_realtime_scroll and '\n' in text:
-                # Real-time scrolling: process line by line
                 self._feed_with_realtime_scroll(text)
             else:
-                # Normal feed without scrolling
                 self.stream.feed(text)
             
             # Track how many lines were trimmed from history (for selection adjustment)
@@ -4157,10 +4210,12 @@ class PyteTerminalWidget(QWidget):
                     if screen_cmd and len(screen_cmd) > len(self.current_command_buffer):
                         # Screen has more complete command (tab completed)
                         self.current_command_buffer = screen_cmd
+        except RuntimeError:
+            return  # A Qt widget (scroll_area, scroll_bar, viewport) was deleted mid-flush
         except Exception as e:
             import traceback
             traceback.print_exc()
-    
+
     def _schedule_canvas_update(self):
         """Schedule canvas update asynchronously to prevent blocking"""
         if not self._canvas_update_pending:
@@ -4174,14 +4229,18 @@ class PyteTerminalWidget(QWidget):
     
     def _feed_with_realtime_scroll(self, text):
         """Feed text to pyte stream with real-time line-by-line scrolling
-        
+
         This processes the text character by character, scrolling incrementally
         whenever a newline is encountered, creating smooth line-by-line scrolling.
-        
+
         Args:
             text: The text to feed to the stream
         """
-        scroll_bar = self.scroll_area.verticalScrollBar()
+        try:
+            scroll_bar = self.scroll_area.verticalScrollBar()
+        except RuntimeError:
+            self.stream.feed(text)
+            return
         if not scroll_bar:
             # No scrollbar, just feed normally
             self.stream.feed(text)
@@ -4220,40 +4279,29 @@ class PyteTerminalWidget(QWidget):
                 if lines_processed % 3 == 0 or lines_processed == newline_count:
                     # Resize canvas to account for new lines
                     self.canvas.resizeCanvas()
-                    
-                    # Force immediate scrollbar update
-                    QApplication.processEvents()
-                    
-                    # Check if user manually scrolled during processing
-                    # Only check if we've scrolled at least once
-                    if lines_scrolled > 0:
-                        current_value = scroll_bar.value()
-                        expected_value = scroll_bar.maximum()
-                        
-                        # User scrolled if they're not at the bottom anymore
-                        # Use a more lenient threshold since we're batch-processing
-                        pixels_per_line = self.canvas.char_height if hasattr(self.canvas, 'char_height') else 20
-                        threshold = 10 * pixels_per_line  # More lenient: 10 lines
-                        
-                        if expected_value > 0 and (expected_value - current_value) > threshold:
-                            self.user_has_scrolled = True
-                            user_interrupted = True
-                            # Continue feeding data without scrolling
-                    
-                    # Only scroll if user hasn't interrupted
-                    if not user_interrupted:
-                        # Scroll to bottom
-                        new_max = scroll_bar.maximum()
-                        # Don't scroll if range is too small (content fits in viewport)
-                        if new_max > 0 and new_max >= 50:
-                            scroll_bar.setValue(new_max)
-                            self.last_autoscroll_position = new_max
-                            lines_scrolled += lines_processed
-                            
-                            # Force viewport refresh for smooth visual update
-                            if self.scroll_area and self.scroll_area.viewport():
-                                self.scroll_area.viewport().update()
-                    
+
+                    try:
+                        # Check if user manually scrolled during processing
+                        if lines_scrolled > 0:
+                            current_value = scroll_bar.value()
+                            expected_value = scroll_bar.maximum()
+                            pixels_per_line = self.canvas.char_height if hasattr(self.canvas, 'char_height') else 20
+                            threshold = 10 * pixels_per_line
+                            if expected_value > 0 and (expected_value - current_value) > threshold:
+                                self.user_has_scrolled = True
+                                user_interrupted = True
+
+                        if not user_interrupted:
+                            new_max = scroll_bar.maximum()
+                            if new_max > 0 and new_max >= 50:
+                                scroll_bar.setValue(new_max)
+                                self.last_autoscroll_position = new_max
+                                lines_scrolled += lines_processed
+                                if self.scroll_area and self.scroll_area.viewport():
+                                    self.scroll_area.viewport().update()
+                    except RuntimeError:
+                        break  # Qt objects deleted; stop processing
+
                     lines_processed = 0  # Reset counter for next batch
         
         # Feed any remaining characters (partial line)
@@ -4809,8 +4857,11 @@ class PyteTerminalWidget(QWidget):
     
     def _hide_suggestions(self):
         """Hide suggestions"""
-        if self.suggestion_widget:
-            self.suggestion_widget.hide()
+        try:
+            if self.suggestion_widget:
+                self.suggestion_widget.hide()
+        except RuntimeError:
+            self.suggestion_widget = None
         self.showing_suggestions = False
     
     def _on_suggestion_selected(self, text):
