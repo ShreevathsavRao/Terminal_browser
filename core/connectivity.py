@@ -21,10 +21,19 @@ class ConnectivityChecker(QObject):
     status_changed = pyqtSignal(bool)
     probing = pyqtSignal(bool)
 
-    def __init__(self, interval=5, host=('8.8.8.8', 53), timeout=2):
+    # Fallback probe targets tried in order — first success → online
+    _PROBE_TARGETS = [
+        ('1.1.1.1', 80),     # Cloudflare HTTP
+        ('1.1.1.1', 443),    # Cloudflare HTTPS
+        ('8.8.8.8', 80),     # Google HTTP
+        ('8.8.8.8', 443),    # Google HTTPS
+        ('9.9.9.9', 443),    # Quad9 HTTPS
+    ]
+
+    def __init__(self, interval=5, host=('8.8.8.8', 53), timeout=3):
         super().__init__()
         self.interval = max(1, int(interval))
-        self.host = host
+        self.host = host  # kept for API compat; actual probe uses _PROBE_TARGETS
         self.timeout = float(timeout)
         self._running = False
         self._task = None
@@ -47,7 +56,6 @@ class ConnectivityChecker(QObject):
     async def _run(self):
         while self._running:
             try:
-                # Notify listeners that a probe is starting
                 try:
                     self.probing.emit(True)
                 except Exception:
@@ -55,7 +63,6 @@ class ConnectivityChecker(QObject):
 
                 status = await self._probe_once_async()
 
-                # Notify listeners that probing finished
                 try:
                     self.probing.emit(False)
                 except Exception:
@@ -66,14 +73,12 @@ class ConnectivityChecker(QObject):
                     try:
                         self.status_changed.emit(status)
                     except Exception:
-                        # Best effort - ignore if emitter fails
                         pass
 
                 await asyncio.sleep(self.interval)
             except asyncio.CancelledError:
                 break
             except Exception:
-                # Continue on any error
                 await asyncio.sleep(self.interval)
 
     def probe_now(self) -> None:
@@ -110,21 +115,22 @@ class ConnectivityChecker(QObject):
     async def _probe_once_async(self):
         """Async probe that doesn't block the event loop"""
         try:
-            # Run socket operation in thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             status = await loop.run_in_executor(None, self._probe_once_sync)
             return status
         except Exception:
             return False
 
     def _probe_once_sync(self):
-        """Synchronous socket probe (called in executor)"""
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(self.timeout)
-            s.connect(self.host)
-            s.close()
-            return True
-        except Exception:
-            return False
+        """Synchronous socket probe — tries multiple targets, returns True on first success."""
+        for host, port in self._PROBE_TARGETS:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(self.timeout)
+                s.connect((host, port))
+                s.close()
+                return True
+            except Exception:
+                continue
+        return False
 

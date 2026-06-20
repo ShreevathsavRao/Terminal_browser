@@ -108,7 +108,8 @@ class TerminalCanvas(QWidget):
         self.column_number_color = QColor('#808080')
         self.column_number_bg_color = QColor('#252525')
         self.colored_line_numbers = prefs_manager.get('terminal', 'colored_line_numbers', True)
-        
+        self.prefs_manager = prefs_manager
+
         # Cursor
         cursor_blink = prefs_manager.get('terminal', 'cursor_blink', True)
         self.cursor_visible = True
@@ -145,6 +146,10 @@ class TerminalCanvas(QWidget):
         self._total_lines_count = 0
         self._cumulative_line_offset = 0
         self.max_content_width = 0
+
+        # Incremental width cache: only scan new history lines, not all of them
+        self._width_cache_max = 0          # running max across scanned history
+        self._width_cache_history_len = 0  # how many history lines were already scanned
         
         # Color maps
         colors_prefs = prefs_manager.get_category('colors')
@@ -347,36 +352,38 @@ class TerminalCanvas(QWidget):
         self.update()
     
     def calculate_max_content_width(self):
-        """Calculate the maximum width of actual content across all lines"""
+        """Return the maximum content width, scanning only new history lines each call."""
         if not self.screen:
-            return self.screen.columns if self.screen else 80
-        
-        max_width = self.screen.columns
-        
-        # Check history lines
+            return 80
+
+        def _rightmost(line):
+            best = 0
+            for col, ch in line.items():
+                data = self.get_char_data(ch)
+                if data and data != ' ' and col + 1 > best:
+                    best = col + 1
+            return best
+
+        # Scan only history lines added since last call
         if hasattr(self.screen, 'history') and hasattr(self.screen.history, 'top'):
-            for line in self.screen.history.top:
-                # Find the rightmost non-space character
-                rightmost = 0
-                for col in range(len(line)):
-                    if col in line:
-                        char_data = self.get_char_data(line[col])
-                        if char_data and char_data != ' ':
-                            rightmost = col + 1
-                max_width = max(max_width, rightmost)
-        
-        # Check current screen buffer
+            history = self.screen.history.top
+            current_len = len(history)
+            if current_len < self._width_cache_history_len:
+                # History was trimmed (screen clear) — reset
+                self._width_cache_max = 0
+                self._width_cache_history_len = 0
+            if current_len > self._width_cache_history_len:
+                history_list = list(history)
+                for line in history_list[self._width_cache_history_len:]:
+                    self._width_cache_max = max(self._width_cache_max, _rightmost(line))
+                self._width_cache_history_len = current_len
+
+        # Always re-scan the live screen rows (small, bounded by screen height ~47)
+        screen_max = self.screen.columns
         for row_idx in range(self.screen.lines):
-            line = self.screen.buffer[row_idx]
-            rightmost = 0
-            for col in range(len(line)):
-                if col in line:
-                    char_data = self.get_char_data(line[col])
-                    if char_data and char_data != ' ':
-                        rightmost = col + 1
-            max_width = max(max_width, rightmost)
-        
-        return max_width
+            screen_max = max(screen_max, _rightmost(self.screen.buffer[row_idx]))
+
+        return max(self._width_cache_max, screen_max)
     
     def sizeHint(self):
         """Suggest size for the widget - returns actual content size"""
@@ -689,7 +696,10 @@ class TerminalCanvas(QWidget):
         # Draw search highlights
         if self.search_matches:
             self.draw_search_highlights(painter, line_num_offset)
-        
+
+        # Draw custom keyword highlights
+        self.draw_keyword_highlights(painter, all_lines, visible_start_line, visible_end_line, line_num_offset)
+
         # Draw hover underline for clickable files/folders
         if self.hover_range:
             self.draw_hover_underline(painter, line_num_offset)
@@ -825,7 +835,54 @@ class TerminalCanvas(QWidget):
             y = row * self.char_height + 10
             width = length * self.char_width
             painter.fillRect(x, y, width, self.char_height, color)
-    
+
+    def draw_keyword_highlights(self, painter, all_lines, visible_start_line, visible_end_line, line_num_offset):
+        """Recolor matched custom keyword text without drawing any background box."""
+        try:
+            custom_keywords = self.prefs_manager.get('terminal', 'minimap_custom_keywords', {})
+            if not custom_keywords:
+                return
+
+            painter.setFont(self.font)
+
+            for row in range(visible_start_line, min(visible_end_line, len(all_lines))):
+                line = all_lines[row]
+                line_text = ''.join(
+                    line[col].data if col in line else ' '
+                    for col in range(self.screen.columns)
+                )
+                line_lower = line_text.lower()
+                y = row * self.char_height + 10
+
+                for keyword, config in custom_keywords.items():
+                    if not config.get('visible', True):
+                        continue
+                    kw_lower = keyword.lower()
+                    kw_len = len(kw_lower)
+                    if not kw_lower or kw_lower not in line_lower:
+                        continue
+
+                    text_color = QColor(config.get('color', '#808080'))
+
+                    start = 0
+                    while True:
+                        idx = line_lower.find(kw_lower, start)
+                        if idx == -1:
+                            break
+
+                        x = line_num_offset + idx * self.char_width + 10
+                        # Erase existing rendering for this span, then redraw in keyword color.
+                        painter.fillRect(x, y, kw_len * self.char_width, self.char_height, self.bg_color)
+                        painter.setPen(text_color)
+                        # Draw the actual keyword text from the line (preserves original casing).
+                        painter.drawText(x, y + self.char_ascent, line_text[idx:idx + kw_len])
+
+                        start = idx + kw_len
+
+            painter.setFont(self.font)
+        except Exception:
+            pass
+
     def get_char_at_pos(self, pos):
         """Get character row/col from pixel position"""
         if not self.screen:
@@ -2528,6 +2585,11 @@ class PyteTerminalWidget(QWidget):
         self._output_buffer_timer.setSingleShot(True)
         self._output_buffer_timer.timeout.connect(self._flush_output_buffer)
         self._output_buffer_flush_ms = 16  # ~60fps update rate
+
+        # Incremental text cache for get_all_text() used by the minimap.
+        # Only new history lines are processed each call; screen rows are always re-read.
+        self._text_cache_lines = []       # list of stripped strings, one per history line
+        self._text_cache_history_len = 0  # number of history lines already in cache
         
         # Sleep/wake detection to prevent empty line accumulation
         self._app_is_suspended = False
@@ -3897,6 +3959,14 @@ class PyteTerminalWidget(QWidget):
                     import collections
                     trimmed = list(self.screen.history.top)[excess:]
                     self.screen.history.top = collections.deque(trimmed, maxlen=self.scrollback_lines)
+                    # Trim the text cache to match
+                    if hasattr(self, '_text_cache_lines'):
+                        self._text_cache_lines = self._text_cache_lines[excess:]
+                        self._text_cache_history_len = len(self._text_cache_lines)
+                    self.canvas._width_cache_history_len = min(
+                        self.canvas._width_cache_history_len,
+                        len(self.screen.history.top)
+                    )
             
             # Restore state after exiting alternate screen
             if exiting_alternate and self.was_in_alternate_mode:
@@ -3904,6 +3974,11 @@ class PyteTerminalWidget(QWidget):
                     # Restore the normal screen completely, removing all alternate screen content
                     self.screen.buffer = self.saved_screen_buffer
                     self.screen.history = self.saved_screen_history
+                    # Invalidate caches — history pointer changed
+                    self._text_cache_lines = []
+                    self._text_cache_history_len = 0
+                    self.canvas._width_cache_max = 0
+                    self.canvas._width_cache_history_len = 0
                     if self.saved_cursor_pos:
                         self.screen.cursor.x = self.saved_cursor_pos[0]
                         self.screen.cursor.y = self.saved_cursor_pos[1]
@@ -4099,6 +4174,11 @@ class PyteTerminalWidget(QWidget):
                     # Line count dropped by more than 50% - likely a screen clear
                     self.canvas._cumulative_line_offset = 0
                     self.canvas._total_lines_count = total_lines_after
+                    # Invalidate incremental caches on screen clear
+                    self._text_cache_lines = []
+                    self._text_cache_history_len = 0
+                    self.canvas._width_cache_max = 0
+                    self.canvas._width_cache_history_len = 0
             elif new_lines_added and meaningful_increase:
                 # New lines were actually added AND scrollbar increased meaningfully - check if we should scroll
                 self._last_known_scroll_max = scroll_max_after
@@ -4224,8 +4304,11 @@ class PyteTerminalWidget(QWidget):
     
     def _do_canvas_update(self):
         """Perform the actual canvas update"""
-        self._canvas_update_pending = False
-        self.canvas.update()
+        try:
+            self._canvas_update_pending = False
+            self.canvas.update()
+        except Exception:
+            import traceback; traceback.print_exc()
     
     def _feed_with_realtime_scroll(self, text):
         """Feed text to pyte stream with real-time line-by-line scrolling
@@ -4319,8 +4402,11 @@ class PyteTerminalWidget(QWidget):
     
     def _do_canvas_resize(self):
         """Perform the actual canvas resize"""
-        self._canvas_resize_pending = False
-        self.canvas.resizeCanvas()
+        try:
+            self._canvas_resize_pending = False
+            self.canvas.resizeCanvas()
+        except Exception:
+            import traceback; traceback.print_exc()
         
         # Check if autoscroll is pending after resize
         if getattr(self, '_autoscroll_pending', False):
@@ -5608,37 +5694,43 @@ class PyteTerminalWidget(QWidget):
         event.accept()
     
     def get_all_text(self):
-        """Get all terminal text including history as a single string
-        
-        Returns:
-            str: All terminal content with newlines between lines
+        """Get all terminal text including history as a single string.
+
+        History lines are cached incrementally — only newly added lines are
+        processed each call, keeping cost proportional to new output, not total
+        history size.
         """
         if not self.screen:
             return ""
-        
-        all_lines = []
-        
-        # Get history lines
+
+        def _line_text(line):
+            return ''.join(
+                ch.data if hasattr(ch, 'data') and ch.data else ' '
+                for col, ch in sorted(line.items())
+                if col < self.screen.columns
+            ).rstrip()
+
+        # --- History (incremental) ---
         if hasattr(self.screen, 'history') and hasattr(self.screen.history, 'top'):
-            for line in self.screen.history.top:
-                line_text = ""
-                for col in range(self.screen.columns):
-                    if col in line:
-                        char = line[col]
-                        line_text += char.data if hasattr(char, 'data') else str(char)
-                all_lines.append(line_text.rstrip())
-        
-        # Get current screen buffer
-        for row_idx in range(self.screen.lines):
-            line = self.screen.buffer[row_idx]
-            line_text = ""
-            for col in range(self.screen.columns):
-                if col in line:
-                    char = line[col]
-                    line_text += char.data if hasattr(char, 'data') else str(char)
-            all_lines.append(line_text.rstrip())
-        
-        return '\n'.join(all_lines)
+            history = self.screen.history.top
+            current_len = len(history)
+            if current_len < self._text_cache_history_len:
+                # History shrank (screen clear / alternate screen) — rebuild from scratch
+                self._text_cache_lines = []
+                self._text_cache_history_len = 0
+            if current_len > self._text_cache_history_len:
+                history_list = list(history)
+                for line in history_list[self._text_cache_history_len:]:
+                    self._text_cache_lines.append(_line_text(line))
+                self._text_cache_history_len = current_len
+
+        # --- Visible screen rows (always re-read — small, bounded by screen height) ---
+        screen_lines = [
+            _line_text(self.screen.buffer[row_idx])
+            for row_idx in range(self.screen.lines)
+        ]
+
+        return '\n'.join(self._text_cache_lines + screen_lines)
     
     def update_viewport_range(self, start_ratio, height_ratio):
         """Update the viewport range for line number highlighting

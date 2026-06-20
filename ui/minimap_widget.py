@@ -187,6 +187,11 @@ class MinimapWidget(QWidget):
         
         # Initialize preferences manager
         self.prefs_manager = PreferencesManager()
+
+        # Color cache: parallel to content_lines, stores pre-computed QColor per line.
+        # History lines never change so we only compute color once per line.
+        self._color_cache = []          # list of QColor, same length as content_lines
+        self._color_cache_prefs = None  # snapshot of pref values used to build cache
         
         # Scrollbar-style dimensions
         self.setMinimumWidth(20)
@@ -239,9 +244,25 @@ class MinimapWidget(QWidget):
         # Store all lines without sampling
         self.content_lines = text_lines
         self.content_line_indices = list(range(len(text_lines)))
-        
+
         # Store total lines count
         self.total_content_lines = new_length
+
+        # Update color cache incrementally — only compute colors for new/changed lines.
+        # Read prefs once here rather than once per line in paintEvent.
+        show_sf = self.prefs_manager.get('terminal', 'minimap_show_success_failure_colors', True)
+        custom_kw = self.prefs_manager.get('terminal', 'minimap_custom_keywords', {})
+        prefs_snap = (show_sf, tuple(sorted(custom_kw.items())))
+
+        if prefs_snap != self._color_cache_prefs or new_length < old_length:
+            # Preferences changed or lines were removed — rebuild entire cache
+            self._color_cache = [self.get_line_color(l) for l in text_lines]
+            self._color_cache_prefs = prefs_snap
+        elif new_length > old_length:
+            # Lines appended — only compute colors for new lines
+            for l in text_lines[old_length:]:
+                self._color_cache.append(self.get_line_color(l))
+        # If same length and same prefs, keep existing cache unchanged
         
         # Update filtered indices if filter is enabled
         if self.color_filter_enabled and self.filtered_colors:
@@ -360,9 +381,10 @@ class MinimapWidget(QWidget):
     
     def refresh_colors(self):
         """Refresh the minimap colors based on current preferences"""
-        # Reload preferences
         self.prefs_manager = PreferencesManager()
-        # Trigger a repaint
+        # Invalidate color cache so all lines are recolored with new prefs
+        self._color_cache = []
+        self._color_cache_prefs = None
         self.update()
     
     def get_line_color(self, line):
@@ -490,9 +512,9 @@ class MinimapWidget(QWidget):
                 
                 for i, line in enumerate(self.content_lines):
                     y = int(i * line_height)
-                    
-                    # Get color based on keywords
-                    color = self.get_line_color(line)
+
+                    # Use pre-computed color from cache (computed once in set_content)
+                    color = self._color_cache[i] if i < len(self._color_cache) else self.get_line_color(line)
                     
                     # Apply color filter if enabled (multiple colors supported)
                     if self.color_filter_enabled and self.filtered_colors:

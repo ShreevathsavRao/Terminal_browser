@@ -4,10 +4,27 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QTabBar,
                              QPushButton, QHBoxLayout, QInputDialog, QMenu, QAction,
                              QDialog, QLabel, QComboBox, QLineEdit, QFormLayout,
                              QDialogButtonBox, QListWidget, QListWidgetItem)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QEvent
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QEvent, QThread
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
 from ui.pyte_terminal_widget import PyteTerminalWidget as TerminalWidget
 import os
+
+# Module-level cache shared across all dialogs opened in the session
+_shell_cache = []  # List of "name (path)" strings
+_shell_cache_ready = False
+
+
+class ShellScanWorker(QThread):
+    """Background thread that scans for available shells once at startup."""
+    finished = pyqtSignal(list)  # emits list of "name (path)" strings
+
+    def run(self):
+        results = NewTerminalDialog.detect_shells_static()
+        global _shell_cache, _shell_cache_ready
+        _shell_cache = results
+        _shell_cache_ready = True
+        self.finished.emit(results)
+
 
 class RenameableTabBar(QTabBar):
     """Custom tab bar that allows renaming tabs with right-click and supports drag-and-drop"""
@@ -34,12 +51,13 @@ class RenameableTabBar(QTabBar):
 class NewTerminalDialog(QDialog):
     """Dialog to configure a new terminal or tool tab."""
 
-    def __init__(self, parent=None, tab_number=1):
+    def __init__(self, parent=None, tab_number=1, cached_shells=None):
         super().__init__(parent)
         self.setWindowTitle("New Tab")
         self.setMinimumWidth(420)
         self._type = 'shell'   # 'shell' or 'tool'
         self._tool = None      # e.g. 'git'
+        self._cached_shells = cached_shells  # pre-scanned list from startup
         self._init_ui(tab_number)
 
     def _init_ui(self, tab_number):
@@ -81,17 +99,8 @@ class NewTerminalDialog(QDialog):
             "QListWidget::item:hover { background:#2a2d2e; }"
         )
         self.shell_list.setSpacing(2)
-        available_shells = self.detect_shells()
-        for s in available_shells:
-            self.shell_list.addItem(s)
-        # Pre-select user's default shell
-        default_shell = os.environ.get('SHELL', '/bin/bash')
-        shell_name = os.path.basename(default_shell)
-        matches = self.shell_list.findItems(shell_name, Qt.MatchContains)
-        if matches:
-            self.shell_list.setCurrentItem(matches[0])
-        elif self.shell_list.count():
-            self.shell_list.setCurrentRow(0)
+        available_shells = self._cached_shells if self._cached_shells else self.detect_shells()
+        self._populate_shell_list(available_shells)
         self.shell_list.itemDoubleClicked.connect(self._accept_shell)
         sl.addWidget(self.shell_list)
         self.type_tabs.addTab(shells_widget, "🖥  Shells")
@@ -121,7 +130,21 @@ class NewTerminalDialog(QDialog):
 
         layout.addWidget(self.type_tabs)
 
-        # OK / Cancel
+        # Bottom row: [Scan for Shells]  ----stretch----  [Cancel] [OK]
+        bottom_row = QHBoxLayout()
+
+        self._scan_btn = QPushButton("⟳  Scan for Shells")
+        self._scan_btn.setStyleSheet(
+            "QPushButton { background:#2d2d2d; color:#4ec9b0; border:1px solid #555; "
+            "border-radius:3px; padding:6px 10px; }"
+            "QPushButton:hover { background:#3c3c3c; }"
+            "QPushButton:disabled { color:#555; }"
+        )
+        self._scan_btn.clicked.connect(self._rescan_shells)
+        bottom_row.addWidget(self._scan_btn)
+
+        bottom_row.addStretch()
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._on_ok)
         buttons.rejected.connect(self.reject)
@@ -132,7 +155,40 @@ class NewTerminalDialog(QDialog):
             }
             QPushButton:hover { background-color: #45a049; }
         """)
-        layout.addWidget(buttons)
+        bottom_row.addWidget(buttons)
+
+        layout.addLayout(bottom_row)
+
+    def _populate_shell_list(self, shells):
+        """Fill the shell list widget and pre-select the user's default shell."""
+        self.shell_list.clear()
+        for s in shells:
+            self.shell_list.addItem(s)
+        default_shell = os.environ.get('SHELL', '/bin/bash')
+        shell_name = os.path.basename(default_shell)
+        matches = self.shell_list.findItems(shell_name, Qt.MatchContains)
+        if matches:
+            self.shell_list.setCurrentItem(matches[0])
+        elif self.shell_list.count():
+            self.shell_list.setCurrentRow(0)
+
+    def _rescan_shells(self):
+        """Re-scan for shells on demand and refresh the list + global cache."""
+        self._scan_btn.setEnabled(False)
+        self._scan_btn.setText("Scanning…")
+        from PyQt5.QtWidgets import QApplication
+        QApplication.processEvents()
+
+        shells = NewTerminalDialog.detect_shells_static()
+
+        global _shell_cache, _shell_cache_ready
+        _shell_cache = shells
+        _shell_cache_ready = True
+
+        self._cached_shells = shells
+        self._populate_shell_list(shells)
+        self._scan_btn.setEnabled(True)
+        self._scan_btn.setText("⟳  Scan for Shells")
 
     def _accept_shell(self):
         self._type = 'shell'
@@ -150,29 +206,25 @@ class NewTerminalDialog(QDialog):
         else:
             self._accept_tool()
 
-    def detect_shells(self):
+    @staticmethod
+    def detect_shells_static():
         """Detect available shells dynamically — no hardcoded name or path list.
 
         Sources:
           1. /etc/shells — OS-maintained authoritative registry (trusted as-is).
           2. Every executable in PATH dirs + common extra locations that passes
-             `<binary> -c 'true'` within 1 s — the definitive test that something
+             `<binary> -c 'exit 42'` within 1 s — the definitive test that something
              is an interactive shell, filtering out ssh, hash, chsh, jshell, etc.
         """
         import subprocess, re
 
         found = []
         seen_paths = set()
-        # Candidates from PATH must have a plausible shell-like name
-        # (ends with 'sh', or contains 'shell', 'fish', 'nu', 'ion', 'xonsh')
         CANDIDATE_RE = re.compile(
             r'sh$|shell|^fish$|^nu$|^ion$|^xonsh$|^elvish$', re.IGNORECASE
         )
 
         def is_real_shell(path):
-            """Return True only if the binary honours `<path> -c 'exit 42'` → code 42.
-            Shells implement 'exit' as a builtin; unrelated tools (tclsh, ssh,
-            jshell, …) either fail on -c or exit with a different code."""
             try:
                 r = subprocess.run(
                     [path, '-c', 'exit 42'],
@@ -191,7 +243,6 @@ class NewTerminalDialog(QDialog):
             seen_paths.add(real)
             found.append((os.path.basename(path), real))
 
-        # 1. /etc/shells — authoritative; trust without re-verification
         try:
             with open('/etc/shells') as f:
                 for line in f:
@@ -201,8 +252,6 @@ class NewTerminalDialog(QDialog):
         except OSError:
             pass
 
-        # 2. Scan PATH + extra dirs for anything that looks like a shell name
-        #    and actually behaves like one
         path_dirs = os.environ.get('PATH', '').split(os.pathsep)
         extra_dirs = [
             '/bin', '/usr/bin', '/usr/local/bin',
@@ -223,6 +272,9 @@ class NewTerminalDialog(QDialog):
             found = [('bash', '/bin/bash'), ('sh', '/bin/sh')]
 
         return [f"{name} ({path})" for name, path in found]
+
+    def detect_shells(self):
+        return NewTerminalDialog.detect_shells_static()
     
     def get_data(self):
         """Return dialog data. 'type' is 'shell' or 'tool'."""
@@ -250,7 +302,16 @@ class TerminalTabs(QWidget):
         self.is_switching = False  # Flag to track if a group switch is in progress
         self.tabs_changed_callback = None  # Callback for when tabs structure changes
         self.init_ui()
+        self._start_shell_scan()
     
+    def _start_shell_scan(self):
+        """Kick off a background shell scan at startup so the cache is warm."""
+        global _shell_cache_ready
+        if _shell_cache_ready:
+            return  # already scanned (e.g. multiple TerminalTabs instances)
+        self._shell_scan_worker = ShellScanWorker()
+        self._shell_scan_worker.start()
+
     def create_close_icon(self):
         """Create a custom close icon"""
         pixmap = QPixmap(16, 16)
@@ -612,7 +673,8 @@ class TerminalTabs(QWidget):
         # If called from button, show dialog
         if name is None:
             self.tab_counter += 1
-            dialog = NewTerminalDialog(self, self.tab_counter)
+            dialog = NewTerminalDialog(self, self.tab_counter,
+                                       cached_shells=_shell_cache if _shell_cache_ready else None)
             if dialog.exec_():
                 data = dialog.get_data()
                 name = data['name']

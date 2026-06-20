@@ -1048,6 +1048,12 @@ class MainWindow(QMainWindow):
     
     def update_jump_button_visibility(self):
         """Update the visibility of the jump to bottom button based on scroll position"""
+        try:
+         self._update_jump_button_visibility_inner()
+        except Exception:
+            import traceback; traceback.print_exc()
+
+    def _update_jump_button_visibility_inner(self):
         current_terminal = self.terminal_tabs.get_current_terminal()
         
         if current_terminal and hasattr(current_terminal, 'is_at_bottom'):
@@ -1438,6 +1444,12 @@ class MainWindow(QMainWindow):
     
     def update_minimap_content(self):
         """Update minimap with current terminal content"""
+        try:
+            self._update_minimap_content_inner()
+        except Exception:
+            import traceback; traceback.print_exc()
+
+    def _update_minimap_content_inner(self):
         current_terminal = self.terminal_tabs.get_current_terminal()
         if current_terminal:
             # Try to get terminal content
