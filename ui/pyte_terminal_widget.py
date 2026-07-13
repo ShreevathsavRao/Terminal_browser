@@ -1,9 +1,9 @@
 """Full-featured terminal widget using pyte for proper interactive command support"""
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QSpinBox, QPushButton, QApplication, QMenu, QAction, QScrollArea)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize, QPoint, QEvent, QPointF
-from PyQt5.QtGui import QFont, QColor, QPainter, QPalette, QKeyEvent, QFontMetrics, QMouseEvent, QPen, QPolygonF
+from qtpy.QtCore import Qt, QThread, Signal, QTimer, QSize, QPoint, QEvent, QPointF
+from qtpy.QtGui import QFont, QColor, QPainter, QPalette, QKeyEvent, QFontMetrics, QMouseEvent, QPen, QPolygonF
 import os
 import sys
 import pty
@@ -33,7 +33,7 @@ UI_DEBUG = False
 class PTYReader(QThread):
     """Thread to read from PTY master"""
     
-    output_received = pyqtSignal(bytes)
+    output_received = Signal(bytes)
     
     def __init__(self, master_fd):
         super().__init__()
@@ -315,8 +315,8 @@ class TerminalCanvas(QWidget):
             width, height: Dimensions of the box
             color: QColor for the border
         """
-        from PyQt5.QtGui import QPolygonF
-        from PyQt5.QtCore import QPointF
+        from qtpy.QtGui import QPolygonF
+        from qtpy.QtCore import QPointF
         
         arrow_depth = min(8, height // 3)  # Arrow indentation depth
         
@@ -1749,7 +1749,7 @@ class TerminalCanvas(QWidget):
                     if self.parent_terminal:
                         # Emit signal to update minimap (if connected via main_window)
                         from ui.main_window import MainWindow
-                        from PyQt5.QtWidgets import QApplication
+                        from qtpy.QtWidgets import QApplication
                         for widget in QApplication.topLevelWidgets():
                             if isinstance(widget, MainWindow):
                                 if hasattr(widget, 'minimap_panel'):
@@ -2081,7 +2081,7 @@ class TerminalCanvas(QWidget):
     
     def _update_hover_at_position(self, pos):
         """Update hover underline at the given position"""
-        from PyQt5.QtWidgets import QApplication
+        from qtpy.QtWidgets import QApplication
         modifiers = QApplication.keyboardModifiers()
         is_ctrl_held = (modifiers & Qt.ControlModifier) or (modifiers & Qt.MetaModifier)
         
@@ -2437,10 +2437,10 @@ class ColumnHeaderWidget(QWidget):
 class PyteTerminalWidget(QWidget):
     """Terminal widget with full terminal emulation using pyte"""
     
-    command_finished = pyqtSignal(int)
-    command_executed = pyqtSignal(str)  # Emits command text when executed
-    prompt_ready = pyqtSignal()  # Emits when a new prompt appears (indicating command finished)
-    viewport_scrolled = pyqtSignal(float, float)  # Emits (viewport_start, viewport_height) when scrolled
+    command_finished = Signal(int)
+    command_executed = Signal(str)  # Emits command text when executed
+    prompt_ready = Signal()  # Emits when a new prompt appears (indicating command finished)
+    viewport_scrolled = Signal(float, float)  # Emits (viewport_start, viewport_height) when scrolled
     
     # Feature flag for Qt file type coloring overlay
     ENABLE_QT_FILE_COLORING = True
@@ -2875,7 +2875,7 @@ class PyteTerminalWidget(QWidget):
     
     def _on_app_state_changed(self, state):
         """Handle application state changes (sleep/wake/background)"""
-        from PyQt5.QtCore import Qt
+        from qtpy.QtCore import Qt
         
         # Check if app is going inactive (sleep, lock screen, background)
         # Don't suspend immediately - use a timer to avoid flickering states
@@ -3704,7 +3704,7 @@ class PyteTerminalWidget(QWidget):
             
             # Update minimap to show highlighter position
             from ui.main_window import MainWindow
-            from PyQt5.QtWidgets import QApplication
+            from qtpy.QtWidgets import QApplication
             for widget in QApplication.topLevelWidgets():
                 if isinstance(widget, MainWindow):
                     if hasattr(widget, 'minimap_panel'):
@@ -5539,7 +5539,7 @@ class PyteTerminalWidget(QWidget):
             # If tab was pressed recently, wait a bit for completion to finish on screen
             if time_since_tab < 0.2:
                 # Use QTimer to delay command extraction slightly to let tab completion finish
-                from PyQt5.QtCore import QTimer
+                from qtpy.QtCore import QTimer
                 QTimer.singleShot(100, lambda: self._extract_and_record_command())
                 self.pending_enter = True
                 # Send Enter AFTER we've scheduled the extraction
@@ -6373,7 +6373,7 @@ class PyteTerminalWidget(QWidget):
                     # Emit signal to update history button
                     try:
                         # Find main window and update history button
-                        from PyQt5.QtWidgets import QApplication
+                        from qtpy.QtWidgets import QApplication
                         for widget in QApplication.topLevelWidgets():
                             if hasattr(widget, 'update_history_button'):
                                 widget.update_history_button()
@@ -6444,7 +6444,7 @@ class PyteTerminalWidget(QWidget):
                         
                         # Update history button
                         try:
-                            from PyQt5.QtWidgets import QApplication
+                            from qtpy.QtWidgets import QApplication
                             for widget in QApplication.topLevelWidgets():
                                 if hasattr(widget, 'update_history_button'):
                                     widget.update_history_button()
@@ -6499,7 +6499,7 @@ class PyteTerminalWidget(QWidget):
                     
                     if success:
                         # Show notification
-                        from PyQt5.QtWidgets import QApplication
+                        from qtpy.QtWidgets import QApplication
                         if hasattr(self, 'parent') and hasattr(self.parent(), 'statusBar'):
                             main_window = self.parent()
                             while main_window and not hasattr(main_window, 'statusBar'):
@@ -6625,7 +6625,7 @@ class PyteTerminalWidget(QWidget):
     def view_history_in_terminal(self):
         """Open history viewer dialog"""
         if not self.history_file_path:
-            from PyQt5.QtWidgets import QMessageBox
+            from qtpy.QtWidgets import QMessageBox
             QMessageBox.information(
                 self,
                 "No History",
@@ -6683,7 +6683,7 @@ class PyteTerminalWidget(QWidget):
             # Update file path
             self.history_file_path = self.history_manager.get_history_file_path(self.tab_id)
             
-            from PyQt5.QtWidgets import QMessageBox
+            from qtpy.QtWidgets import QMessageBox
             archive_count = len(history_data.get("archives", []))
             QMessageBox.information(
                 self,
@@ -6692,7 +6692,7 @@ class PyteTerminalWidget(QWidget):
             )
         
         except Exception as e:
-            from PyQt5.QtWidgets import QMessageBox
+            from qtpy.QtWidgets import QMessageBox
             QMessageBox.critical(
                 self,
                 "Import Failed",

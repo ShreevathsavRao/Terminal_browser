@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QPainter, QPen, QColor
+from qtpy.QtWidgets import QWidget
+from qtpy.QtCore import Qt, QSize
+from qtpy.QtGui import QPainter, QPen, QColor
 
 
 class NetworkStatusWidget(QWidget):

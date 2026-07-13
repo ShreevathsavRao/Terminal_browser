@@ -6,7 +6,7 @@ to avoid blocking the UI event loop.
 """
 import socket
 import asyncio
-from PyQt5.QtCore import QObject, pyqtSignal
+from qtpy.QtCore import QObject, Signal
 from typing import Optional
 
 
@@ -18,8 +18,8 @@ class ConnectivityChecker(QObject):
     - `probing(bool)` : True when an individual probe starts, False when it ends
     """
 
-    status_changed = pyqtSignal(bool)
-    probing = pyqtSignal(bool)
+    status_changed = Signal(bool)
+    probing = Signal(bool)
 
     # Fallback probe targets tried in order — first success → online
     _PROBE_TARGETS = [

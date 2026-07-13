@@ -4,7 +4,7 @@ import json
 import os
 import asyncio
 import aiofiles
-from PyQt5.QtCore import QSettings
+from qtpy.QtCore import QSettings
 
 class PreferencesManager:
     """Manages application preferences and settings"""

@@ -1,11 +1,11 @@
 """Notes Dialog with two-panel layout and rich text editing"""
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QSplitter, 
+from qtpy.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QSplitter, 
                              QListWidget, QListWidgetItem, QTextEdit, QPushButton,
                              QToolBar, QAction, QColorDialog, QFontComboBox, 
                              QSpinBox, QLabel, QMessageBox, QWidget, QComboBox)
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSize, QUrl
-from PyQt5.QtGui import (QFont, QTextCharFormat, QColor, QTextCursor, 
+from qtpy.QtCore import Qt, Signal, QTimer, QSize, QUrl
+from qtpy.QtGui import (QFont, QTextCharFormat, QColor, QTextCursor, 
                          QTextListFormat, QIcon, QMouseEvent, QDesktopServices)
 import re
 import subprocess
@@ -219,6 +219,12 @@ class NotesDialog(QDialog):
         self.text_editor.textChanged.connect(self.on_text_changed)
         self.text_editor.cursorPositionChanged.connect(self.update_format_actions)
         
+        # Connect undo/redo signals
+        self.undo_action.triggered.connect(self.text_editor.undo)
+        self.redo_action.triggered.connect(self.text_editor.redo)
+        self.text_editor.undoAvailable.connect(self.undo_action.setEnabled)
+        self.text_editor.redoAvailable.connect(self.redo_action.setEnabled)
+        
         # Set placeholder for first line
         self.text_editor.setPlaceholderText("Enter note title on first line (will be underlined)...")
         
@@ -425,6 +431,22 @@ class NotesDialog(QDialog):
         number_action.setToolTip("Numbers")
         number_action.triggered.connect(self.insert_numbered_list)
         toolbar.addAction(number_action)
+        
+        toolbar.addSeparator()
+        
+        # Undo
+        self.undo_action = QAction("↶", self)
+        self.undo_action.setToolTip("Undo (Ctrl+Z)")
+        self.undo_action.setShortcut("Ctrl+Z")
+        self.undo_action.setEnabled(False)
+        toolbar.addAction(self.undo_action)
+        
+        # Redo
+        self.redo_action = QAction("↷", self)
+        self.redo_action.setToolTip("Redo (Ctrl+Shift+Z)")
+        self.redo_action.setShortcut("Ctrl+Shift+Z")
+        self.redo_action.setEnabled(False)
+        toolbar.addAction(self.redo_action)
         
         toolbar.addSeparator()
         
@@ -697,14 +719,19 @@ class NotesDialog(QDialog):
         # Create a new cursor to modify first line
         first_line_cursor = QTextCursor(self.text_editor.document())
         first_line_cursor.movePosition(QTextCursor.Start)
-        first_line_cursor.movePosition(QTextCursor.Down, QTextCursor.KeepAnchor, 0)
         first_line_cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+        
+        # Join with previous edit block to avoid polluting undo stack
+        first_line_cursor.joinPreviousEditBlock()
         
         # Apply underline format to first line
         fmt = QTextCharFormat()
         fmt.setFontUnderline(True)
         fmt.setFontWeight(QFont.Bold)  # Also make it bold for emphasis
         first_line_cursor.setCharFormat(fmt)
+        
+        # End the joined edit block
+        first_line_cursor.endEditBlock()
         
         # Restore original cursor position and selection
         cursor.setPosition(saved_anchor)

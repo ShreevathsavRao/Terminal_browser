@@ -1,12 +1,12 @@
 """Right sidebar panel for buttons and command queue"""
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QScrollArea, QLabel, QFrame, QListWidget, 
                              QListWidgetItem, QMenu, QSplitter, QFileDialog,
                              QLineEdit, QInputDialog, QMessageBox, QDialog,
                              QDialogButtonBox, QStackedWidget, QToolButton)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize
-from PyQt5.QtGui import QFont, QFontMetrics, QPainter, QTransform, QIcon
+from qtpy.QtCore import Qt, Signal, QSize
+from qtpy.QtGui import QFont, QFontMetrics, QPainter, QTransform, QIcon
 from ui.dialogs import AddButtonDialog, AddFileDialog
 from core.command_queue import CommandQueue
 
@@ -65,7 +65,7 @@ class VerticalTabButton(QPushButton):
 class QueueItemWidget(QWidget):
     """Custom widget for command queue items with cancel button"""
     
-    cancel_clicked = pyqtSignal(int)  # Signal emitted when cancel button is clicked
+    cancel_clicked = Signal(int)  # Signal emitted when cancel button is clicked
     
     def __init__(self, index, name, command, status, parent=None):
         super().__init__(parent)
@@ -150,10 +150,10 @@ class QueueItemWidget(QWidget):
 class ButtonPanel(QWidget):
     """Right panel for command buttons and queue"""
     
-    execute_command = pyqtSignal(str, dict, object)  # command, env_vars, terminal_widget
-    insert_command_to_terminal = pyqtSignal(str)  # command (insert only, don't execute)
-    buttons_changed = pyqtSignal()  # Signal when buttons are added, edited, or deleted
-    queues_changed = pyqtSignal()  # Signal when any queue starts/stops (for status button update)
+    execute_command = Signal(str, dict, object)  # command, env_vars, terminal_widget
+    insert_command_to_terminal = Signal(str)  # command (insert only, don't execute)
+    buttons_changed = Signal()  # Signal when buttons are added, edited, or deleted
+    queues_changed = Signal()  # Signal when any queue starts/stops (for status button update)
     
     def __init__(self):
         super().__init__()
@@ -162,6 +162,7 @@ class ButtonPanel(QWidget):
         self.current_group = None  # Track current group
         self.buttons_per_group = {}  # Store buttons per group: {group_name: [button_data]}
         self.files_per_group = {}  # Store files per group: {group_name: {file_name: file_path}}
+        self._active_browser = None  # Browser widget bound to the Browser Tools page
         self.init_ui()
         self.setup_connections()
     
@@ -334,7 +335,7 @@ class ButtonPanel(QWidget):
         # Users can drag the splitter to resize the panel
         # Notify parent to update
         if self.parent():
-            from PyQt5.QtCore import QTimer
+            from qtpy.QtCore import QTimer
             QTimer.singleShot(0, lambda: self.parent().update() if hasattr(self.parent(), 'update') else None)
         
     def init_ui(self):
@@ -351,6 +352,7 @@ class ButtonPanel(QWidget):
         
         # Queue Area (bottom)
         queue_area = self.create_queue_area()
+        self.queue_area_widget = queue_area
         splitter.addWidget(queue_area)
         
         splitter.setSizes([400, 200])
@@ -494,6 +496,9 @@ class ButtonPanel(QWidget):
         
         self.button_stack.addWidget(files_widget)
         
+        # Page 4: Browser Tools (shown when a browser tab is active)
+        self.browser_page_index = self.button_stack.addWidget(self._create_browser_tools_page())
+        
         # Add stack to main layout
         layout.addWidget(self.button_stack)
         
@@ -503,6 +508,7 @@ class ButtonPanel(QWidget):
         # Right side: Vertical tab buttons
         tab_bar_widget = QWidget()
         tab_bar_widget.setStyleSheet("background-color: #1e1e1e;")
+        self.tab_bar_widget = tab_bar_widget
         header_layout = QVBoxLayout(tab_bar_widget)
         header_layout.setSpacing(0)
         header_layout.setContentsMargins(0, 0, 0, 0)
@@ -979,6 +985,44 @@ class ButtonPanel(QWidget):
         self.command_book_tab_btn.setChecked(index == 1)
         self.session_recorder_tab_btn.setChecked(index == 2)
         self.files_tab_btn.setChecked(index == 3)
+    
+    def _create_browser_tools_page(self):
+        """Build the Browser Tools page (vertical-tabbed scraper toolkit)."""
+        from ui.browser_scraper import BrowserToolsWidget
+        self.browser_tools_widget = BrowserToolsWidget()
+        return self.browser_tools_widget
+
+    def show_browser_tools(self, browser):
+        """Switch the panel to Browser Tools bound to the given browser widget."""
+        self._active_browser = browser
+        if hasattr(self, 'browser_tools_widget'):
+            self.browser_tools_widget.set_browser(browser)
+        if hasattr(self, 'browser_page_index'):
+            self.button_stack.setCurrentIndex(self.browser_page_index)
+            self.buttons_tab_btn.setChecked(False)
+            self.command_book_tab_btn.setChecked(False)
+            self.session_recorder_tab_btn.setChecked(False)
+            self.files_tab_btn.setChecked(False)
+        # Hide the command UI (vertical tabs + command queue) that is useless
+        # while browsing, leaving only the Browser Tools page.
+        if hasattr(self, 'tab_bar_widget'):
+            self.tab_bar_widget.hide()
+        if hasattr(self, 'queue_area_widget'):
+            self.queue_area_widget.hide()
+
+    def hide_browser_tools(self):
+        """Return to the normal command buttons view (leaving a browser tab)."""
+        self._active_browser = None
+        if hasattr(self, 'browser_tools_widget'):
+            self.browser_tools_widget.set_browser(None)
+        # Restore the command UI
+        if hasattr(self, 'tab_bar_widget'):
+            self.tab_bar_widget.show()
+        if hasattr(self, 'queue_area_widget'):
+            self.queue_area_widget.show()
+        if hasattr(self, 'browser_page_index') and \
+                self.button_stack.currentIndex() == self.browser_page_index:
+            self.switch_button_view(0)
     
     def go_to_search(self):
         """Switch to Command Book and focus search box"""

@@ -1,19 +1,19 @@
 """Terminal search widget for finding text in terminal output"""
 
-from PyQt5.QtWidgets import (QWidget, QHBoxLayout, QLineEdit, QPushButton, 
+from qtpy.QtWidgets import (QWidget, QHBoxLayout, QLineEdit, QPushButton, 
                              QLabel, QCheckBox, QFrame, QApplication)
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QKeyEvent
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QKeyEvent
 
 
 class TerminalSearchWidget(QWidget):
     """Search widget for finding text in terminal"""
     
     # Signals
-    search_requested = pyqtSignal(str, bool, bool)  # text, case_sensitive, whole_word
-    next_requested = pyqtSignal()
-    previous_requested = pyqtSignal()
-    close_requested = pyqtSignal()
+    search_requested = Signal(str, bool, bool)  # text, case_sensitive, whole_word
+    next_requested = Signal()
+    previous_requested = Signal()
+    close_requested = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)

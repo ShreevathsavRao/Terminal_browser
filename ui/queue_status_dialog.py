@@ -1,15 +1,15 @@
 """Queue Status Dialog - Shows all active queues across all terminals"""
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+from qtpy.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QListWidget, QListWidgetItem, QWidget)
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize
-from PyQt5.QtGui import QFont
+from qtpy.QtCore import Qt, QTimer, Signal, QSize
+from qtpy.QtGui import QFont
 
 
 class QueueStatusItemWidget(QWidget):
     """Custom widget for displaying queue status for a terminal"""
     
-    jump_to_terminal = pyqtSignal(object)  # Signal emitted with terminal widget to jump to
+    jump_to_terminal = Signal(object)  # Signal emitted with terminal widget to jump to
     
     def __init__(self, terminal_widget, tab_name, queue, status, parent=None):
         super().__init__(parent)
@@ -103,7 +103,7 @@ class QueueStatusItemWidget(QWidget):
 class QueueStatusDialog(QDialog):
     """Dialog showing status of all active queues across terminals"""
     
-    jump_to_terminal = pyqtSignal(object)  # Signal to notify main window to switch to terminal
+    jump_to_terminal = Signal(object)  # Signal to notify main window to switch to terminal
     
     def __init__(self, button_panel, terminal_tabs, parent=None):
         super().__init__(parent)

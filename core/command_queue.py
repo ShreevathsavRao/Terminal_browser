@@ -1,13 +1,13 @@
 """Command queue management with FIFO execution"""
 
-from PyQt5.QtCore import QObject, pyqtSignal, QTimer
+from qtpy.QtCore import QObject, Signal, QTimer
 from collections import deque
 
 class CommandQueue(QObject):
     """Manages a FIFO queue of commands for a specific terminal"""
     
-    execute_command = pyqtSignal(str, dict, object)  # command, env_vars, terminal_widget
-    queue_updated = pyqtSignal()
+    execute_command = Signal(str, dict, object)  # command, env_vars, terminal_widget
+    queue_updated = Signal()
     
     def __init__(self, terminal_widget=None):
         super().__init__()

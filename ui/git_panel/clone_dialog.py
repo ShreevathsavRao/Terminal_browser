@@ -2,20 +2,20 @@
 
 import os
 import subprocess
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
     QLineEdit, QPushButton, QProgressBar, QFileDialog,
     QDialogButtonBox, QMessageBox, QWidget, QTreeWidget,
     QTreeWidgetItem, QHeaderView, QInputDialog
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QColor
+from qtpy.QtCore import Qt, QThread, Signal, QTimer
+from qtpy.QtGui import QColor
 from .git_backend import GitBackend, GitError
 
 
 class CloneWorker(QThread):
-    progress = pyqtSignal(str)
-    finished = pyqtSignal(bool, str)
+    progress = Signal(str)
+    finished = Signal(bool, str)
 
     def __init__(self, url: str, dest: str, branch: str, depth: int):
         super().__init__()
@@ -51,7 +51,7 @@ class CloneWorker(QThread):
 class CloneDialog(QDialog):
     """Clone a repository with progress indicator."""
 
-    clone_done = pyqtSignal(str)   # repo path
+    clone_done = Signal(str)   # repo path
 
     def __init__(self, parent=None):
         super().__init__(parent)

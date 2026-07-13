@@ -7,9 +7,9 @@ import os
 import sys
 import subprocess
 from pathlib import Path
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QPixmap, QPainter
-from PyQt5.QtSvg import QSvgRenderer
+from qtpy.QtWidgets import QApplication
+from qtpy.QtGui import QPixmap, QPainter
+from qtpy.QtSvg import QSvgRenderer
 
 def create_icon():
     """Create .icns file from SVG"""

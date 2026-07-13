@@ -1,4 +1,9 @@
+# Qt binding abstraction — selects PySide6 (Qt6/Chromium 140) via QT_API in main.py
+qtpy>=2.4.0
+PySide6>=6.8.0
+# Legacy Qt5 binding kept as an optional fallback (QT_API=pyqt5). Chromium 87.
 PyQt5>=5.15.0
+PyQtWebEngine>=5.15.0
 pyte>=0.8.0
 pyinstaller>=5.0.0
 qasync>=0.24.0

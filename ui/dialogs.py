@@ -1,11 +1,11 @@
 """Dialog windows for user input"""
 
 import re
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+from qtpy.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QLineEdit, QTextEdit, QPushButton, QFormLayout, QSizePolicy,
                              QWidget, QApplication, QToolBar, QFileDialog, QMessageBox)
-from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QPainter, QColor, QFont, QFontMetrics
+from qtpy.QtCore import Qt, QSize
+from qtpy.QtGui import QPainter, QColor, QFont, QFontMetrics
 
 class AddButtonDialog(QDialog):
     """Dialog for adding/editing command buttons"""
@@ -293,7 +293,7 @@ class TextViewerDialog(QDialog):
     def enable_minimap_filtering(self):
         """Enable color filtering in minimap for errors and warnings"""
         import re
-        from PyQt5.QtGui import QColor
+        from qtpy.QtGui import QColor
         
         # Check if content has errors or warnings
         has_errors = False
@@ -497,7 +497,7 @@ class TextViewerCanvas(QWidget):
     
     def paintEvent(self, event):
         """Paint the text content with colors"""
-        from PyQt5.QtGui import QPen
+        from qtpy.QtGui import QPen
         painter = QPainter(self)
         painter.setFont(self.font)
         
@@ -619,7 +619,7 @@ class TextViewerCanvas(QWidget):
     
     def show_context_menu(self, position):
         """Show context menu when right-clicking on viewport highlighter"""
-        from PyQt5.QtWidgets import QMenu, QAction
+        from qtpy.QtWidgets import QMenu, QAction
         
         # Check if clicking near the viewport highlighter
         y = position.y() + self.scroll_offset - 10

@@ -1,9 +1,9 @@
 """Autocomplete suggestion widget for terminal commands and file/folder names"""
 
-from PyQt5.QtWidgets import (QWidget, QListWidget, QListWidgetItem, QVBoxLayout,
+from qtpy.QtWidgets import (QWidget, QListWidget, QListWidgetItem, QVBoxLayout,
                              QApplication, QFrame)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QPoint, QEvent
-from PyQt5.QtGui import QFont, QColor, QIcon, QPainter, QPixmap, QPen, QKeyEvent
+from qtpy.QtCore import Qt, Signal, QSize, QTimer, QPoint, QEvent
+from qtpy.QtGui import QFont, QColor, QIcon, QPainter, QPixmap, QPen, QKeyEvent
 import os
 import glob
 import shutil
@@ -92,8 +92,8 @@ class SuggestionItem(QListWidgetItem):
 class SuggestionWidget(QFrame):
     """Dropdown widget showing autocomplete suggestions"""
     
-    item_selected = pyqtSignal(str)  # Emits when user selects a suggestion
-    dismissed = pyqtSignal()  # Emits when suggestions are dismissed
+    item_selected = Signal(str)  # Emits when user selects a suggestion
+    dismissed = Signal()  # Emits when suggestions are dismissed
     
     def __init__(self, parent=None):
         super().__init__(parent)

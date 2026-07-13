@@ -1,14 +1,14 @@
 """Commit graph view — visual git log with colored branch lanes."""
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QScrollArea,
     QLabel, QLineEdit, QPushButton, QComboBox, QMenu, QAction,
     QAbstractItemView, QHeaderView, QFrame, QSizePolicy,
     QTreeWidget, QTreeWidgetItem, QInputDialog, QMessageBox,
     QTextEdit, QApplication
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QRect, QPoint, QSize
-from PyQt5.QtGui import (
+from qtpy.QtCore import Qt, Signal, QTimer, QRect, QPoint, QSize
+from qtpy.QtGui import (
     QPainter, QColor, QPen, QBrush, QFont, QFontMetrics,
     QPainterPath, QLinearGradient
 )
@@ -41,9 +41,9 @@ HASH_COL_W = 70
 class GraphCanvas(QWidget):
     """Custom-painted widget that draws the commit graph + rows."""
 
-    commit_clicked = pyqtSignal(object)   # Commit
-    commit_right_clicked = pyqtSignal(object, QPoint)
-    columns_changed = pyqtSignal()        # emitted when column widths change
+    commit_clicked = Signal(object)   # Commit
+    commit_right_clicked = Signal(object, QPoint)
+    columns_changed = Signal()        # emitted when column widths change
 
     # Column resize constants (used by GraphHeader too)
     _RESIZE_NONE   = 0
@@ -573,7 +573,7 @@ class CommitDetailPanel(QWidget):
     def _render_diff(self, diff: str):
         self.diff_view.clear()
         cursor = self.diff_view.textCursor()
-        from PyQt5.QtGui import QTextCharFormat
+        from qtpy.QtGui import QTextCharFormat
         fmt_normal = QTextCharFormat()
         fmt_normal.setForeground(QColor("#cccccc"))
         fmt_add = QTextCharFormat()
@@ -775,7 +775,7 @@ class GraphView(QWidget):
             self._run_op(lambda: self.backend.create_tag(name, commit.hash))
 
     def _copy(self, text: str):
-        from PyQt5.QtWidgets import QApplication
+        from qtpy.QtWidgets import QApplication
         QApplication.clipboard().setText(text)
 
     def _run_op(self, op):

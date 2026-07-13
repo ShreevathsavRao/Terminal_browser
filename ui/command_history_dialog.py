@@ -1,10 +1,10 @@
 """Command History Search Dialog with fuzzy matching"""
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, 
+from qtpy.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, 
                              QListWidget, QListWidgetItem, QLabel, QPushButton,
                              QWidget, QSizePolicy, QShortcut, QAbstractItemView)
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QKeySequence
+from qtpy.QtCore import Qt, Signal, QTimer
+from qtpy.QtGui import QFont, QKeySequence
 from datetime import datetime
 import os
 
@@ -75,7 +75,7 @@ def format_command_entry(command_data):
 class CommandHistoryDialog(QDialog):
     """Dialog for searching and selecting command history"""
     
-    command_selected = pyqtSignal(str)  # Emits the selected command
+    command_selected = Signal(str)  # Emits the selected command
     
     def __init__(self, history_manager, parent=None):
         super().__init__(parent)

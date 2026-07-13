@@ -1,16 +1,16 @@
 """Minimap widget for terminal content visualization"""
 
 import re
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QMenu, QAction, QLineEdit, QApplication, QCheckBox, QWidgetAction, QHBoxLayout
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPointF, QRect, QPoint
-from PyQt5.QtGui import QPainter, QColor, QFont, QPen, QBrush, QPolygonF
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea, QMenu, QAction, QLineEdit, QApplication, QCheckBox, QWidgetAction, QHBoxLayout
+from qtpy.QtCore import Qt, Signal, QTimer, QPointF, QRect, QPoint
+from qtpy.QtGui import QPainter, QColor, QFont, QPen, QBrush, QPolygonF
 from core.preferences_manager import PreferencesManager
 
 
 class ExtendedPreviewWidget(QWidget):
     """Floating widget showing extended preview of minimap content"""
     
-    line_clicked = pyqtSignal(int)  # Emits line number when clicked
+    line_clicked = Signal(int)  # Emits line number when clicked
     
     def __init__(self, parent=None):
         super().__init__(parent, Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -157,11 +157,11 @@ class MinimapWidget(QWidget):
     """A minimap that shows a scaled-down view of terminal content"""
     
     # Signal emitted when user clicks on minimap (outside viewport box) - moves highlighter only
-    position_clicked = pyqtSignal(float)  # Emits normalized position (0.0 to 1.0)
+    position_clicked = Signal(float)  # Emits normalized position (0.0 to 1.0)
     # Signal emitted when user drags viewport box - scrolls terminal
-    viewport_dragged = pyqtSignal(float)  # Emits normalized position (0.0 to 1.0)
+    viewport_dragged = Signal(float)  # Emits normalized position (0.0 to 1.0)
     # Signal emitted when center line changes (for syncing with terminal highlight)
-    center_line_changed = pyqtSignal(int)  # Emits actual line number in full content
+    center_line_changed = Signal(int)  # Emits actual line number in full content
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1400,9 +1400,9 @@ class MinimapWidget(QWidget):
 class MinimapPanel(QWidget):
     """Panel containing minimap with title"""
     
-    position_clicked = pyqtSignal(float)
-    viewport_dragged = pyqtSignal(float)  # Forward viewport drag signal
-    center_line_changed = pyqtSignal(int)  # Forward center line signal
+    position_clicked = Signal(float)
+    viewport_dragged = Signal(float)  # Forward viewport drag signal
+    center_line_changed = Signal(int)  # Forward center line signal
     
     def __init__(self, parent=None):
         super().__init__(parent)

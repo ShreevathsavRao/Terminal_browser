@@ -6,7 +6,7 @@ import asyncio
 import aiofiles
 from datetime import datetime
 from typing import List, Dict, Tuple
-from PyQt5.QtCore import QTimer
+from qtpy.QtCore import QTimer
 
 
 class CommandHistoryManager:

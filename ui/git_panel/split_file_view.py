@@ -2,14 +2,14 @@
 
 import os
 import shutil
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel,
     QComboBox, QPushButton, QTreeWidget, QTreeWidgetItem,
     QHeaderView, QMenu, QAction, QInputDialog, QMessageBox,
     QFileDialog, QTextEdit, QDialog, QDialogButtonBox, QSizePolicy
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QColor, QFont, QIcon
+from qtpy.QtCore import Qt, Signal, QTimer
+from qtpy.QtGui import QColor, QFont, QIcon
 from .git_backend import GitBackend, FileStatus, GitError
 
 # Status display config: (label, color)
@@ -51,7 +51,7 @@ class FileDiffDialog(QDialog):
         layout.addWidget(bb)
 
     def _render_diff(self, view, diff):
-        from PyQt5.QtGui import QTextCharFormat
+        from qtpy.QtGui import QTextCharFormat
         cursor = view.textCursor()
         for line in diff.splitlines():
             fmt = QTextCharFormat()
@@ -73,7 +73,7 @@ class FileDiffDialog(QDialog):
 class FilePanel(QWidget):
     """Single side of the split panel (local or remote)."""
 
-    file_selected = pyqtSignal(str, bool)   # path, is_local
+    file_selected = Signal(str, bool)   # path, is_local
 
     def __init__(self, title: str, is_local: bool, backend: GitBackend, parent=None):
         super().__init__(parent)
@@ -457,7 +457,7 @@ class FilePanel(QWidget):
 class SplitFileView(QWidget):
     """Two-panel local ↔ remote file view with sync toolbar."""
 
-    open_conflict_resolver = pyqtSignal(str)   # path
+    open_conflict_resolver = Signal(str)   # path
 
     def __init__(self, backend: GitBackend, parent=None):
         super().__init__(parent)

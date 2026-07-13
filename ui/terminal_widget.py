@@ -1,8 +1,8 @@
 """Terminal widget for command execution"""
 
-from PyQt5.QtWidgets import QTextEdit, QVBoxLayout, QWidget, QLabel
-from PyQt5.QtCore import Qt, QProcess, QProcessEnvironment, pyqtSignal, QTimer
-from PyQt5.QtGui import QTextCursor, QFont, QColor, QPalette, QKeyEvent
+from qtpy.QtWidgets import QTextEdit, QVBoxLayout, QWidget, QLabel
+from qtpy.QtCore import Qt, QProcess, QProcessEnvironment, Signal, QTimer
+from qtpy.QtGui import QTextCursor, QFont, QColor, QPalette, QKeyEvent
 import os
 import glob
 import socket
@@ -15,9 +15,9 @@ UI_DEBUG = False
 class InteractiveTerminal(QTextEdit):
     """Interactive terminal that accepts user input"""
     
-    command_executed = pyqtSignal(str)  # Emits when user presses Enter
-    interrupt_signal = pyqtSignal()  # Emits on Ctrl+C
-    clear_signal = pyqtSignal()  # Emits on Ctrl+L
+    command_executed = Signal(str)  # Emits when user presses Enter
+    interrupt_signal = Signal()  # Emits on Ctrl+C
+    clear_signal = Signal()  # Emits on Ctrl+L
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -405,8 +405,8 @@ class InteractiveTerminal(QTextEdit):
 class TerminalWidget(QWidget):
     """Widget that emulates a terminal"""
     
-    command_finished = pyqtSignal(int)  # exit code
-    command_executed = pyqtSignal(str)  # Emitted when user presses Enter with full command text
+    command_finished = Signal(int)  # exit code
+    command_executed = Signal(str)  # Emitted when user presses Enter with full command text
     
     # Maximum number of lines to keep in scrollback buffer
     # Note: This is a performance optimization - QTextEdit becomes slow with very large documents

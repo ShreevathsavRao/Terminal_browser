@@ -1,12 +1,12 @@
 """Stage / unstage / commit dialog."""
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel,
     QPushButton, QTextEdit, QCheckBox, QTreeWidget, QTreeWidgetItem,
     QHeaderView, QMessageBox, QLineEdit, QApplication
 )
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QFont
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QColor, QFont
 
 from .git_backend import GitBackend, GitError, FileStatus
 
@@ -53,7 +53,7 @@ def _btn(text, bg, slot):
 class CommitPanel(QWidget):
     """Staging area and commit UI embedded in the Git panel."""
 
-    committed = pyqtSignal()
+    committed = Signal()
 
     def __init__(self, backend: GitBackend, parent=None):
         super().__init__(parent)
@@ -397,7 +397,7 @@ class CommitPanel(QWidget):
         self._render_diff(header + body)
 
     def _render_diff(self, diff: str):
-        from PyQt5.QtGui import QTextCharFormat
+        from qtpy.QtGui import QTextCharFormat
         self.diff_view.clear()
         cursor = self.diff_view.textCursor()
         for line in diff.splitlines():

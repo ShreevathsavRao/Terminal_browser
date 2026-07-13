@@ -1,20 +1,20 @@
 """3-way merge conflict resolver."""
 
 import os
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel,
     QPushButton, QTextEdit, QListWidget, QListWidgetItem,
     QScrollBar, QFrame, QMessageBox, QSizePolicy
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QColor, QFont, QTextCharFormat, QTextCursor, QTextBlockFormat
+from qtpy.QtCore import Qt, Signal, QTimer
+from qtpy.QtGui import QColor, QFont, QTextCharFormat, QTextCursor, QTextBlockFormat
 from .git_backend import GitBackend, ConflictHunk, GitError
 
 
 class HunkWidget(QWidget):
     """Single conflict hunk with accept buttons."""
 
-    resolved = pyqtSignal(int, str, list)  # hunk_idx, resolution, lines
+    resolved = Signal(int, str, list)  # hunk_idx, resolution, lines
 
     def __init__(self, hunk: ConflictHunk, idx: int, parent=None):
         super().__init__(parent)
@@ -119,7 +119,7 @@ class HunkWidget(QWidget):
 class ConflictResolver(QWidget):
     """Full 3-way merge conflict resolver for a single file."""
 
-    all_resolved = pyqtSignal(str)   # path — emitted when all hunks resolved
+    all_resolved = Signal(str)   # path — emitted when all hunks resolved
 
     def __init__(self, backend: GitBackend, path: str, parent=None):
         super().__init__(parent)
@@ -183,7 +183,7 @@ class ConflictResolver(QWidget):
         splitter = QSplitter(Qt.Vertical)
 
         # Hunk list scroll area
-        from PyQt5.QtWidgets import QScrollArea
+        from qtpy.QtWidgets import QScrollArea
         self.hunk_scroll = QScrollArea()
         self.hunk_scroll.setWidgetResizable(True)
         self.hunk_scroll.setStyleSheet("background:#1e1e1e; border:none;")
@@ -347,7 +347,7 @@ class ConflictResolver(QWidget):
 class ConflictListPanel(QWidget):
     """Panel listing all conflicted files with resolution status."""
 
-    open_file = pyqtSignal(str)
+    open_file = Signal(str)
 
     def __init__(self, backend: GitBackend, parent=None):
         super().__init__(parent)

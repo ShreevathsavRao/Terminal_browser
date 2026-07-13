@@ -1,13 +1,13 @@
 """Main Git panel — tab container wiring all sub-components."""
 
 import os
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget, QLabel,
     QPushButton, QComboBox, QFileDialog, QMessageBox, QInputDialog,
     QMenu, QAction, QSizePolicy
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QColor, QFont
+from qtpy.QtCore import Qt, Signal, QTimer
+from qtpy.QtGui import QColor, QFont
 
 from .git_backend import GitBackend, GitError
 from .graph_view import GraphView
@@ -20,7 +20,7 @@ from .clone_dialog import CloneDialog, RemoteManagerDialog
 class RepoPicker(QWidget):
     """Shown when no repo is open yet."""
 
-    repo_opened = pyqtSignal(str)
+    repo_opened = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -190,7 +190,7 @@ class GitPanel(QWidget):
             ("⟳ Refresh", "#3c3c3c", self.refresh_all),
         ]:
             btn = QPushButton(text)
-            from PyQt5.QtGui import QColor as _QC
+            from qtpy.QtGui import QColor as _QC
             hover  = _QC(color).lighter(130).name()
             press  = _QC(color).darker(120).name()
             btn.setStyleSheet(

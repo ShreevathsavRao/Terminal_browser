@@ -1,17 +1,17 @@
 """Help Dialog with comprehensive documentation and navigation"""
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, 
+from qtpy.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, 
                              QTextBrowser, QListWidget, QListWidgetItem, 
                              QSplitter, QPushButton, QLabel, QWidget)
-from PyQt5.QtCore import Qt, QUrl
-from PyQt5.QtGui import QFont, QTextCursor, QDesktopServices, QIcon, QPixmap, QPainter
+from qtpy.QtCore import Qt, QUrl
+from qtpy.QtGui import QFont, QTextCursor, QDesktopServices, QIcon, QPixmap, QPainter
 import os
 import sys
 from pathlib import Path
 
 # Try to import SVG support
 try:
-    from PyQt5.QtSvg import QSvgRenderer
+    from qtpy.QtSvg import QSvgRenderer
     SVG_AVAILABLE = True
 except ImportError:
     SVG_AVAILABLE = False
@@ -348,12 +348,12 @@ class HelpDialog(QDialog):
                     
                     # Scroll to section after tab switch (with delay to allow rendering)
                     if fragment:
-                        from PyQt5.QtCore import QTimer
+                        from qtpy.QtCore import QTimer
                         def scroll_to_section():
                             current_widget = self.tab_widget.currentWidget()
                             if current_widget:
                                 # Find all QTextBrowser widgets in the current tab
-                                from PyQt5.QtWidgets import QTextBrowser
+                                from qtpy.QtWidgets import QTextBrowser
                                 browsers = current_widget.findChildren(QTextBrowser)
                                 
                                 # If no browsers found, maybe the widget itself is a QTextBrowser
@@ -579,7 +579,7 @@ class HelpDialog(QDialog):
                 current_html = self.feature_index_browser.toHtml()
                 if not current_html or "📚 Feature Index" not in current_html:
                     # Use QTimer to restore after a short delay to ensure tab is fully visible
-                    from PyQt5.QtCore import QTimer
+                    from qtpy.QtCore import QTimer
                     QTimer.singleShot(50, lambda: self.feature_index_browser.setHtml(self.feature_index_html))
         
         # Connect to tab changed signal if not already connected

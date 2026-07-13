@@ -1,10 +1,10 @@
 """History viewer dialog for displaying archived terminal output"""
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
+from qtpy.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QTextEdit, QComboBox, QLabel, QScrollArea, QWidget,
                              QFileDialog, QMessageBox, QSplitter)
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QColor, QTextCharFormat, QTextCursor
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QFont, QColor, QTextCharFormat, QTextCursor
 from datetime import datetime
 import os
 from ui.minimap_widget import MinimapWidget
@@ -13,7 +13,7 @@ from ui.minimap_widget import MinimapWidget
 class HistoryViewerDialog(QDialog):
     """Dialog for viewing and managing terminal history archives"""
     
-    import_requested = pyqtSignal(list)  # Emits lines to import back to terminal
+    import_requested = Signal(list)  # Emits lines to import back to terminal
     
     def __init__(self, history_data, parent=None):
         super().__init__(parent)

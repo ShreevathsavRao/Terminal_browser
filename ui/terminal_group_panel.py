@@ -1,18 +1,18 @@
 """Left sidebar panel for terminal groups"""
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QListWidget, QListWidgetItem, 
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QListWidget, QListWidgetItem, 
                              QPushButton, QInputDialog, QMenu, QMessageBox, QLabel,
                              QHBoxLayout, QFrame, QAction, QAbstractItemView, QToolButton)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize
-from PyQt5.QtGui import QFont, QFontMetrics
+from qtpy.QtCore import Qt, Signal, QSize, QTimer
+from qtpy.QtGui import QFont, QFontMetrics
 
 class TerminalGroupPanel(QWidget):
     """Panel for managing terminal groups"""
     
-    group_selected = pyqtSignal(str, int)  # group_name, tab_index
-    group_renamed = pyqtSignal(str, str)  # old_name, new_name
-    group_deleted = pyqtSignal(str)  # group_name
-    group_added = pyqtSignal(str)  # group_name
+    group_selected = Signal(str, int)  # group_name, tab_index
+    group_renamed = Signal(str, str)  # old_name, new_name
+    group_deleted = Signal(str)  # group_name
+    group_added = Signal(str)  # group_name
     
     def __init__(self):
         super().__init__()
@@ -120,7 +120,7 @@ class TerminalGroupPanel(QWidget):
         # Users can drag the splitter to resize the panel
         # Emit signal to parent to update splitter
         if self.parent():
-            from PyQt5.QtCore import QTimer
+            from qtpy.QtCore import QTimer
             QTimer.singleShot(0, lambda: self.parent().update() if hasattr(self.parent(), 'update') else None)
     
     def add_default_groups(self):
@@ -169,6 +169,14 @@ class TerminalGroupPanel(QWidget):
         """)
         label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         
+        # Pulsing audio indicator (hidden unless a browser tab in this group
+        # is playing sound)
+        audio_indicator = QLabel()
+        audio_indicator.setFixedSize(16, 16)
+        audio_indicator.setStyleSheet("background: transparent; border: none;")
+        audio_indicator.setVisible(False)
+        item_widget._audio_indicator = audio_indicator
+        
         # Close button
         close_btn = QToolButton()
         close_btn.setText("×")
@@ -193,6 +201,7 @@ class TerminalGroupPanel(QWidget):
         close_btn.setCursor(Qt.PointingHandCursor)
         
         item_layout.addWidget(label, 1)  # Give label stretch factor of 1
+        item_layout.addWidget(audio_indicator, 0)  # Audio pulse indicator
         item_layout.addWidget(close_btn, 0)  # No stretch for button
         
         # Set a proper size hint for the item
@@ -207,6 +216,55 @@ class TerminalGroupPanel(QWidget):
         
         return item
     
+    # ── Audio "heartbeat" indicator ───────────────────────────────────────
+    def set_group_audio(self, group_name, playing):
+        """Show/hide a pulsing audio indicator on a group row."""
+        if not hasattr(self, '_audio_pulse_groups'):
+            self._audio_pulse_groups = set()
+        if playing:
+            self._audio_pulse_groups.add(group_name)
+        else:
+            self._audio_pulse_groups.discard(group_name)
+            self._clear_group_indicator(group_name)
+        self._update_pulse_timer()
+
+    def _update_pulse_timer(self):
+        if not hasattr(self, '_pulse_timer'):
+            self._pulse_timer = QTimer(self)
+            self._pulse_timer.timeout.connect(self._pulse_tick)
+            self._pulse_phase = 0.0
+        if self._audio_pulse_groups and not self._pulse_timer.isActive():
+            self._pulse_timer.start(60)
+        elif not self._audio_pulse_groups and self._pulse_timer.isActive():
+            self._pulse_timer.stop()
+
+    def _pulse_tick(self):
+        import math
+        from ui.browser_widget import make_audio_pulse_pixmap
+        self._pulse_phase += 0.14
+        intensity = 0.35 + 0.65 * (0.5 + 0.5 * math.sin(self._pulse_phase * math.pi * 2))
+        pm = make_audio_pulse_pixmap(intensity)
+        for group_name in list(self._audio_pulse_groups):
+            ind = self._group_indicator(group_name)
+            if ind is not None:
+                ind.setPixmap(pm)
+                ind.setVisible(True)
+
+    def _group_indicator(self, group_name):
+        for i in range(self.groups_list.count()):
+            item = self.groups_list.item(i)
+            if item and item.data(Qt.UserRole) == group_name:
+                w = self.groups_list.itemWidget(item)
+                if w is not None:
+                    return getattr(w, '_audio_indicator', None)
+        return None
+
+    def _clear_group_indicator(self, group_name):
+        ind = self._group_indicator(group_name)
+        if ind is not None:
+            ind.clear()
+            ind.setVisible(False)
+
     def _update_item_selection_style(self, item):
         """Update the visual style of an item based on selection state"""
         if not item:

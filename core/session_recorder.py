@@ -3,7 +3,7 @@
 import json
 import os
 from datetime import datetime
-from PyQt5.QtCore import QSettings
+from qtpy.QtCore import QSettings
 
 class SessionRecorder:
     """Manages recording and playback of command sessions"""

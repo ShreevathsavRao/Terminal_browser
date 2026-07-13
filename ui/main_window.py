@@ -1,11 +1,11 @@
 """Main application window"""
 
 import asyncio
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+from qtpy.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QSplitter, QTabWidget, QMessageBox, QPushButton, QToolBar, QAction, QMenuBar, QMenu,
                              QLabel, QSpinBox, QFileDialog)
-from PyQt5.QtCore import Qt, QSettings, QTimer
-from PyQt5.QtGui import QIcon, QKeySequence
+from qtpy.QtCore import Qt, QSettings, QTimer
+from qtpy.QtGui import QIcon, QKeySequence
 from ui.terminal_group_panel import TerminalGroupPanel
 from ui.button_panel import ButtonPanel
 from ui.terminal_tabs import TerminalTabs
@@ -405,7 +405,7 @@ class MainWindow(QMainWindow):
             current_terminal.interrupt_process()
         elif hasattr(current_terminal, 'process'):
             # Direct access to process if interrupt_process method not available
-            from PyQt5.QtCore import QProcess
+            from qtpy.QtCore import QProcess
             if current_terminal.process and current_terminal.process.state() == QProcess.Running:
                 current_terminal.process.terminate()
     
@@ -524,14 +524,14 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.toggle_left_button)
         
         # Add spacer to center the preferences/help and logo group
-        from PyQt5.QtWidgets import QWidget as ToolbarSpacer, QSizePolicy
+        from qtpy.QtWidgets import QWidget as ToolbarSpacer, QSizePolicy
         left_spacer = ToolbarSpacer()
         left_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         toolbar.addWidget(left_spacer)
 
         # Create centered group: Preferences, Logo, Help
         center_widget = QWidget()
-        from PyQt5.QtWidgets import QHBoxLayout
+        from qtpy.QtWidgets import QHBoxLayout
         center_layout = QHBoxLayout(center_widget)
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(6)
@@ -697,6 +697,8 @@ class MainWindow(QMainWindow):
         self.terminal_group_panel.group_renamed.connect(self.on_group_renamed)
         self.terminal_group_panel.group_deleted.connect(self.on_group_deleted)
         self.terminal_group_panel.group_added.connect(self.on_group_added)
+        # Show a pulsing indicator on a group when one of its browser tabs plays audio
+        self.terminal_tabs.group_audio_changed.connect(self.terminal_group_panel.set_group_audio)
         self.button_panel.execute_command.connect(self.execute_command)
         self.button_panel.insert_command_to_terminal.connect(self.insert_command_to_terminal)
         self.button_panel.buttons_changed.connect(self.save_application_state)
@@ -845,7 +847,7 @@ class MainWindow(QMainWindow):
                 }
             """)
             bottom_layout.addWidget(self.focus_label)
-            from PyQt5.QtWidgets import QApplication as _QApp
+            from qtpy.QtWidgets import QApplication as _QApp
             _QApp.instance().focusChanged.connect(self._on_focus_changed)
 
             # Add queue status button
@@ -959,7 +961,7 @@ class MainWindow(QMainWindow):
         
     def on_global_font_size_changed(self, size):
         """Handle global font size spinbox change"""
-        from PyQt5.QtGui import QFont as _QFont
+        from qtpy.QtGui import QFont as _QFont
         current_widget = self.terminal_tabs.get_current_terminal()
         if current_widget is None:
             return
@@ -978,7 +980,7 @@ class MainWindow(QMainWindow):
                     gv.canvas._font = mono
                     gv.canvas._bold_font = _QFont("Menlo", size)
                     gv.canvas._bold_font.setBold(True)
-                    from PyQt5.QtGui import QFontMetrics
+                    from qtpy.QtGui import QFontMetrics
                     gv.canvas._fm = QFontMetrics(mono)
                     gv.canvas.update()
                 if hasattr(gv, 'detail'):
@@ -1023,7 +1025,7 @@ class MainWindow(QMainWindow):
     
     def import_history_file(self):
         """Import a .tbhist file into current terminal"""
-        from PyQt5.QtWidgets import QFileDialog
+        from qtpy.QtWidgets import QFileDialog
         import os
         
         file_path, _ = QFileDialog.getOpenFileName(
@@ -1109,6 +1111,13 @@ class MainWindow(QMainWindow):
         current_terminal = self.terminal_tabs.get_current_terminal()
         if current_terminal:
             self.button_panel.set_current_terminal(current_terminal)
+
+        # Show Browser Tools in the buttons panel when a browser tab is active
+        from ui.browser_widget import BrowserWidget
+        if isinstance(current_terminal, BrowserWidget):
+            self.button_panel.show_browser_tools(current_terminal)
+        else:
+            self.button_panel.hide_browser_tools()
     
     def on_terminal_tab_closing(self, terminal_widget):
         """Handle terminal tab about to be closed - cleanup its queue
@@ -1133,7 +1142,7 @@ class MainWindow(QMainWindow):
         current_terminal = self.terminal_tabs.get_current_terminal()
         if current_terminal and hasattr(current_terminal, 'update_pty_size_from_widget'):
             # Trigger PTY resize with a short delay to allow splitter movement to complete
-            from PyQt5.QtCore import QTimer
+            from qtpy.QtCore import QTimer
             QTimer.singleShot(100, current_terminal.update_pty_size_from_widget)
     
     def on_group_added(self, group_name):
@@ -1197,7 +1206,7 @@ class MainWindow(QMainWindow):
             self.toggle_left_button.setText("▶ Groups")
         
         # Process events to ensure resize operations complete
-        from PyQt5.QtCore import QTimer, QCoreApplication
+        from qtpy.QtCore import QTimer, QCoreApplication
         QCoreApplication.processEvents()
         
         # Re-enable updates
@@ -1528,7 +1537,7 @@ class MainWindow(QMainWindow):
     
     def show_quick_actions(self):
         """Show quick action menu"""
-        from PyQt5.QtWidgets import QMenu
+        from qtpy.QtWidgets import QMenu
         menu = QMenu(self)
         
         # Clear terminal action
@@ -1584,7 +1593,7 @@ class MainWindow(QMainWindow):
     
     def quick_copy_last_command(self):
         """Copy last executed command to clipboard"""
-        from PyQt5.QtWidgets import QApplication
+        from qtpy.QtWidgets import QApplication
         
         # Get last command from history
         recent = self.history_manager.get_recent_commands(1)
@@ -1644,7 +1653,7 @@ class MainWindow(QMainWindow):
             self.button_panel.setMaximumWidth(16777215)  # Reset to default Qt maximum
         
         # Process events to ensure resize operations complete
-        from PyQt5.QtCore import QTimer, QCoreApplication
+        from qtpy.QtCore import QTimer, QCoreApplication
         QCoreApplication.processEvents()
         
         # Re-enable updates

@@ -1,10 +1,10 @@
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize, QRectF
-from PyQt5.QtGui import QPainter, QColor, QPen, QPixmap, QImage, qRed, qGreen, qBlue, qAlpha, qRgba
+from qtpy.QtWidgets import QWidget
+from qtpy.QtCore import Qt, QTimer, Signal, QSize, QRectF
+from qtpy.QtGui import QPainter, QColor, QPen, QPixmap, QImage, qRed, qGreen, qBlue, qAlpha, qRgba
 import os
 import sys
 try:
-    from PyQt5.QtSvg import QSvgRenderer
+    from qtpy.QtSvg import QSvgRenderer
 except Exception:
     QSvgRenderer = None
 
@@ -30,7 +30,7 @@ class ConnectionLogoWidget(QWidget):
     Emits `clicked` when user clicks the widget.
     """
 
-    clicked = pyqtSignal()
+    clicked = Signal()
 
     def __init__(self, parent=None, size: int = 48, svg_path: str = None):
         super().__init__(parent)

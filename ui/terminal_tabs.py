@@ -1,11 +1,11 @@
 """Top tab bar for terminals (browser-like)"""
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QTabBar,
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QTabBar,
                              QPushButton, QHBoxLayout, QInputDialog, QMenu, QAction,
                              QDialog, QLabel, QComboBox, QLineEdit, QFormLayout,
                              QDialogButtonBox, QListWidget, QListWidgetItem)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer, QEvent, QThread
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
+from qtpy.QtCore import Qt, Signal, QSize, QTimer, QEvent, QThread
+from qtpy.QtGui import QIcon, QPixmap, QPainter, QColor
 from ui.pyte_terminal_widget import PyteTerminalWidget as TerminalWidget
 import os
 
@@ -16,7 +16,7 @@ _shell_cache_ready = False
 
 class ShellScanWorker(QThread):
     """Background thread that scans for available shells once at startup."""
-    finished = pyqtSignal(list)  # emits list of "name (path)" strings
+    finished = Signal(list)  # emits list of "name (path)" strings
 
     def run(self):
         results = NewTerminalDialog.detect_shells_static()
@@ -35,6 +35,26 @@ class RenameableTabBar(QTabBar):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         # Explicitly enable movable tabs
         self.setMovable(True)
+
+    def tabSizeHint(self, index):
+        """Keep browser tabs a fixed width.
+
+        A browser tab's label changes every second (site name ⇄ live u.../d…
+        transfer rate) and its favicon pops in mid-load. If the tab resized to
+        fit, the tab bar's total width would cross the overflow threshold and
+        make the scroll arrows flicker on/off. A fixed width avoids that.
+        """
+        hint = super().tabSizeHint(index)
+        try:
+            ttw = self.terminal_tabs_widget
+            if ttw is not None:
+                widget = ttw.tab_widget.widget(index)
+                from ui.browser_widget import BrowserWidget
+                if isinstance(widget, BrowserWidget):
+                    hint.setWidth(170)
+        except Exception:
+            pass
+        return hint
         
     def mousePressEvent(self, event):
         """Handle right-click to show context menu, allow left-click drag"""
@@ -47,6 +67,117 @@ class RenameableTabBar(QTabBar):
                 return
         # Always call super() to allow drag functionality to work
         super().mousePressEvent(event)
+
+
+class TabMinimapStrip(QWidget):
+    """Slim horizontal strip above the tab bar: one icon per tab.
+
+    Works like the editor minimap — each tab is shown as a small favicon
+    (browser) or a logo (git / terminal). Clicking or dragging across the strip
+    selects that tab (which auto-scrolls the tab bar to it). Replaces the old
+    ◀ / ▶ end scroll buttons.
+    """
+
+    def __init__(self, tab_widget, parent=None):
+        super().__init__(parent)
+        self._tabs = tab_widget
+        self._cells = []            # list of (index, QRect)
+        self._sig = None            # last rendered state signature
+        self.setFixedHeight(20)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def refresh(self):
+        # Only repaint when the tab set / current index / icons actually
+        # changed, so unrelated app activity doesn't make the strip flicker.
+        parts = [str(self._tabs.count()), str(self._tabs.currentIndex())]
+        for i in range(self._tabs.count()):
+            ic = self._tabs.tabIcon(i)
+            parts.append(str(ic.cacheKey()) if ic is not None else '0')
+        sig = '|'.join(parts)
+        if sig == self._sig:
+            return
+        self._sig = sig
+        self.update()
+
+
+    def _pixmap_for(self, index, size):
+        """Favicon / logo pixmap for a tab, or None to draw a text glyph."""
+        icon = self._tabs.tabIcon(index)
+        if icon is not None and not icon.isNull():
+            pm = icon.pixmap(size, size)
+            if pm is not None and not pm.isNull():
+                return pm
+        return None
+
+    def _glyph_for(self, index):
+        """Fallback glyph + colour when a tab has no usable icon."""
+        widget = self._tabs.widget(index)
+        try:
+            from ui.git_panel import GitPanel
+            from ui.browser_widget import BrowserWidget
+        except Exception:
+            GitPanel = BrowserWidget = ()
+        if GitPanel and isinstance(widget, GitPanel):
+            return "⎇", QColor('#f0803c')
+        if BrowserWidget and isinstance(widget, BrowserWidget):
+            return "🌐", QColor('#6cb2ff')
+        return "❯", QColor('#4ec9b0')     # terminal
+
+    def paintEvent(self, event):
+        from qtpy.QtCore import QRect
+        from qtpy.QtGui import QFont
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.fillRect(self.rect(), QColor('#232323'))
+        n = self._tabs.count()
+        self._cells = []
+        if n == 0:
+            p.end()
+            return
+        cur = self._tabs.currentIndex()
+        cell = max(14, min(30, (self.width() - 4) // n))
+        icon_sz = min(14, cell - 2)
+        cy = self.height() // 2
+        x = 2
+        gfont = QFont()
+        gfont.setPixelSize(11)
+        for i in range(n):
+            rect = QRect(x, 1, cell, self.height() - 2)
+            self._cells.append((i, rect))
+            if i == cur:
+                p.fillRect(rect, QColor('#0d47a1'))
+                p.fillRect(QRect(rect.x(), rect.bottom() - 1, rect.width(), 2),
+                           QColor('#4d9bff'))
+            pm = self._pixmap_for(i, icon_sz)
+            if pm is not None:
+                scaled = pm.scaled(icon_sz, icon_sz, Qt.KeepAspectRatio,
+                                   Qt.SmoothTransformation)
+                p.drawPixmap(rect.center().x() - scaled.width() // 2,
+                             cy - scaled.height() // 2, scaled)
+            else:
+                glyph, color = self._glyph_for(i)
+                p.setFont(gfont)
+                p.setPen(color)
+                p.drawText(rect, Qt.AlignCenter, glyph)
+            x += cell
+        p.end()
+
+    def _select_at(self, pos):
+        for i, rect in self._cells:
+            if rect.contains(pos):
+                if i != self._tabs.currentIndex():
+                    self._tabs.setCurrentIndex(i)
+                return
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._select_at(event.pos())
+
+    def mouseMoveEvent(self, event):
+        # Drag across the strip to scrub through tabs (minimap-style).
+        if event.buttons() & Qt.LeftButton:
+            self._select_at(event.pos())
 
 class NewTerminalDialog(QDialog):
     """Dialog to configure a new terminal or tool tab."""
@@ -117,7 +248,7 @@ class NewTerminalDialog(QDialog):
         )
         self.tool_list.setSpacing(2)
         # Each entry: (display text, tool key)
-        self._tools = [("⎇  Git", "git")]
+        self._tools = [("⎇  Git", "git"), ("🌐  Browser", "browser")]
         for display, _ in self._tools:
             item = QListWidgetItem(display)
             item.setForeground(QColor("#4ec9b0"))
@@ -176,7 +307,7 @@ class NewTerminalDialog(QDialog):
         """Re-scan for shells on demand and refresh the list + global cache."""
         self._scan_btn.setEnabled(False)
         self._scan_btn.setText("Scanning…")
-        from PyQt5.QtWidgets import QApplication
+        from qtpy.QtWidgets import QApplication
         QApplication.processEvents()
 
         shells = NewTerminalDialog.detect_shells_static()
@@ -292,13 +423,17 @@ class NewTerminalDialog(QDialog):
 
 class TerminalTabs(QWidget):
     """Browser-like terminal tabs"""
-    
+
+    # Emitted when any browser tab in a group starts/stops playing audio.
+    group_audio_changed = Signal(str, bool)  # group_name, playing
+
     def __init__(self):
         super().__init__()
         self.tab_counter = 0
         self.current_group = None
         self.tabs_per_group = {}  # Store tabs per group: {group_name: [tab_data]}
         self.terminal_widgets_cache = {}  # Cache terminal widgets: {group_name: [(name, shell, widget)]}
+        self._active_tab_per_group = {}  # Remember last-selected tab index per group
         self.is_switching = False  # Flag to track if a group switch is in progress
         self.tabs_changed_callback = None  # Callback for when tabs structure changes
         self.init_ui()
@@ -330,7 +465,7 @@ class TerminalTabs(QWidget):
         
     def init_ui(self):
         """Initialize the UI"""
-        from PyQt5.QtWidgets import QSizePolicy
+        from qtpy.QtWidgets import QSizePolicy
         
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -558,7 +693,16 @@ class TerminalTabs(QWidget):
             }
         """)
         tab_bar_layout.addWidget(self.right_nav_btn)
-        
+        # The old ◀ / ▶ end scroll buttons are replaced by the minimap strip.
+        self.left_nav_btn.hide()
+        self.right_nav_btn.hide()
+
+        # Minimap-style overview strip above the tabs: an icon per tab
+        # (favicon for browsers, logo for git / terminal). Click or drag to
+        # jump to a tab.
+        self.tab_minimap = TabMinimapStrip(self.tab_widget)
+        main_layout.addWidget(self.tab_minimap)
+
         # Add the custom tab bar container to main layout
         main_layout.addWidget(tab_bar_container)
         
@@ -573,11 +717,28 @@ class TerminalTabs(QWidget):
         
         # Connect tab changes to update navigation
         self.tab_widget.currentChanged.connect(lambda: self.nav_update_timer.start(100))
+        self.tab_widget.currentChanged.connect(self._reapply_active_browser_route)
         self.tab_widget.tabBar().tabMoved.connect(self.on_tab_moved)
+
+    def _reapply_active_browser_route(self, *args):
+        """Make the active browser tab's own network route the live one.
+
+        Qt's proxy is app-wide, so switching to a tab must re-assert that
+        tab's route — otherwise a tab that never enabled Tor/VPN would keep
+        using whatever route another tab set (e.g. reaching a Tor-only site
+        without Tor). Non-browser tabs leave the route untouched.
+        """
+        try:
+            widget = self.tab_widget.currentWidget()
+            mgr = getattr(widget, 'privacy', None)
+            if mgr is not None:
+                mgr.reapply()
+        except Exception:
+            pass
     
     def hide_qt_scroll_buttons(self):
         """Hide Qt's default scroll buttons completely"""
-        from PyQt5.QtWidgets import QToolButton
+        from qtpy.QtWidgets import QToolButton
         
         # Find all QToolButton children of the tab bar and hide them
         tab_bar = self.tab_widget.tabBar()
@@ -601,6 +762,25 @@ class TerminalTabs(QWidget):
                 widget = self.tab_widget.widget(i)
                 if widget:
                     tab_text = self.tab_widget.tabText(i)
+
+                    # Preserve tool tabs (git / browser) instead of flattening to terminals
+                    from ui.git_panel import GitPanel
+                    from ui.browser_widget import BrowserWidget
+                    if isinstance(widget, GitPanel):
+                        clean = tab_text.strip().lstrip("⎇").strip()
+                        tabs_info.append({'name': clean or 'Git', 'tab_type': 'git'})
+                        widgets_cache.append((clean or 'Git', None, widget))
+                        continue
+                    if isinstance(widget, BrowserWidget):
+                        clean = tab_text.strip().lstrip("🌐").strip()
+                        tabs_info.append({
+                            'name': clean or 'Browser',
+                            'tab_type': 'browser',
+                            'url': widget.current_url(),
+                        })
+                        widgets_cache.append((tab_text, None, widget))
+                        continue
+
                     shell = widget.shell if hasattr(widget, 'shell') else '/bin/bash'
                     
                     # Strip shell indicator from name
@@ -644,7 +824,7 @@ class TerminalTabs(QWidget):
         if hasattr(self, 'hide_qt_scroll_buttons'):
             QTimer.singleShot(100, self.hide_qt_scroll_buttons)
         
-    def _open_tool_tab(self, name: str, tool: str):
+    def _open_tool_tab(self, name: str, tool: str, url: str = None):
         """Open a tool (non-terminal) as a tab in the tab widget."""
         if tool == 'git':
             from ui.git_panel import GitPanel
@@ -659,7 +839,237 @@ class TerminalTabs(QWidget):
             self.tab_widget.tabBar().setTabButton(idx, QTabBar.RightSide, self.create_close_button())
             git_panel.refresh_all()
             return git_panel
+        if tool == 'browser':
+            from ui.browser_widget import BrowserWidget
+            browser = BrowserWidget()
+            idx = self.tab_widget.addTab(browser, name)
+            self.tab_widget.setTabIcon(idx, self._make_globe_icon())
+            self.tab_widget.setCurrentIndex(idx)
+            self.tab_widget.tabBar().setTabButton(idx, QTabBar.RightSide, self.create_close_button())
+            # Let "open link in new tab / window" spawn a sibling browser tab
+            # that inherits this tab's VPN/Tor route.
+            browser.new_tab_factory = lambda parent=browser: self._new_browser_from(parent)
+            # Restore the previously-open page, if provided
+            if url:
+                browser.navigate_to(url)
+            # Show a pulsing "heartbeat" indicator on the tab while audio/video plays
+            browser.audioStateChanged.connect(
+                lambda playing, b=browser: self._on_browser_audio(b, playing))
+            # Tab title tracks the site name / live transfer rate; the tab icon
+            # tracks the page favicon (default logo while loading or on error).
+            browser.tabLabelChanged.connect(
+                lambda text, b=browser: self._on_browser_label(b, text))
+            browser.tabFaviconChanged.connect(
+                lambda icon, b=browser: self._on_browser_favicon(b, icon))
+            # Tint the tab by network route: lavender = Tor, yellow = VPN/proxy.
+            if getattr(browser, 'privacy', None) is not None:
+                browser.privacy.statusChanged.connect(
+                    lambda mode, state, detail, b=browser:
+                    self._on_browser_privacy(b, mode, state))
+            return browser
         return None
+
+    def _new_browser_from(self, parent):
+        """Open a new browser tab that inherits ``parent``'s VPN/Tor route."""
+        child = self._open_tool_tab("Browser", 'browser')
+        try:
+            p_priv = getattr(parent, 'privacy', None)
+            c_priv = getattr(child, 'privacy', None)
+            if p_priv is not None and c_priv is not None:
+                c_priv.inherit_from(p_priv)
+        except Exception:
+            pass
+        return child
+
+    # ── Browser network-privacy tab tint ──────────────────────────────────
+    def _on_browser_privacy(self, browser, mode, state):
+        """Record a browser tab's active route and recolor its tab."""
+        kind = mode if (state == 'on' and mode in ('tor', 'proxy')) else None
+        if not hasattr(self, '_privacy_kind'):
+            self._privacy_kind = {}
+        self._privacy_kind[browser] = kind
+        self._apply_tab_privacy(browser)
+
+    def _apply_tab_privacy(self, browser):
+        idx = self.tab_widget.indexOf(browser)
+        if idx < 0:
+            return
+        from qtpy.QtGui import QColor
+        kind = getattr(self, '_privacy_kind', {}).get(browser)
+        colors = {'tor': QColor('#B57EDC'), 'proxy': QColor('#FFD400')}
+        self.tab_widget.tabBar().setTabTextColor(
+            idx, colors.get(kind, QColor('#e0e0e0')))
+        # The favicon owns the tab icon; the route dot is only a fallback.
+        self._refresh_browser_icon(browser)
+
+    # ── Browser tab label / favicon ───────────────────────────────────────
+    def _on_browser_label(self, browser, text):
+        idx = self.tab_widget.indexOf(browser)
+        if idx < 0:
+            return
+        # Skip no-op updates: the net meter fires once a second even when the
+        # label is unchanged, and repainting the tab bar each time makes the
+        # tabs look like they are "jumping".
+        if not hasattr(self, '_browser_label'):
+            self._browser_label = {}
+        if self._browser_label.get(browser) == text:
+            return
+        self._browser_label[browser] = text
+        self.tab_widget.setTabText(idx, text)
+
+    def _on_browser_favicon(self, browser, icon):
+        if not hasattr(self, '_browser_favicon'):
+            self._browser_favicon = {}
+        self._browser_favicon[browser] = icon
+        self._refresh_browser_icon(browser)
+
+    def _refresh_browser_icon(self, browser):
+        """Pick the tab icon: audio pulse > favicon > route dot > logo."""
+        idx = self.tab_widget.indexOf(browser)
+        if idx < 0:
+            return
+        # The audio pulse animation owns the icon while it runs.
+        if hasattr(self, '_audio_pulses') and browser in self._audio_pulses:
+            return
+        icon = getattr(self, '_browser_favicon', {}).get(browser)
+        if icon is not None and not icon.isNull():
+            new_icon, sig = icon, 'fav:%s' % icon.cacheKey()
+        else:
+            kind = getattr(self, '_privacy_kind', {}).get(browser)
+            if kind:
+                new_icon, sig = self._make_privacy_icon(kind), 'route:%s' % kind
+            else:
+                new_icon, sig = self._make_globe_icon(), 'globe'
+        # Only touch the tab bar / minimap when the icon actually changed, so
+        # unrelated updates don't trigger a full re-render.
+        if not hasattr(self, '_browser_icon_sig'):
+            self._browser_icon_sig = {}
+        if self._browser_icon_sig.get(browser) == sig:
+            return
+        self._browser_icon_sig[browser] = sig
+        self.tab_widget.setTabIcon(idx, new_icon)
+        if hasattr(self, 'tab_minimap'):
+            self.tab_minimap.refresh()
+
+    def _make_globe_icon(self):
+        """Default browser tab logo: a small globe."""
+        from qtpy.QtGui import QColor, QPixmap, QPainter, QPen
+        pm = QPixmap(14, 14)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor('#6cb2ff'))
+        pen.setWidthF(1.2)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(1, 1, 11, 11)
+        p.drawEllipse(4, 1, 5, 11)   # vertical meridian
+        p.drawLine(1, 6, 12, 6)       # equator
+        p.end()
+        return QIcon(pm)
+
+    def _make_privacy_icon(self, kind):
+        """Return a small filled dot QIcon (lavender=Tor, yellow=VPN)."""
+        from qtpy.QtGui import QColor, QPixmap, QPainter
+        color = {'tor': QColor('#B57EDC'), 'proxy': QColor('#FFD400')}.get(kind)
+        if color is None:
+            return QIcon()
+        pm = QPixmap(12, 12)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        p.drawEllipse(1, 1, 10, 10)
+        p.end()
+        return QIcon(pm)
+
+    # ── Browser audio "heartbeat" indicator ───────────────────────────────
+    def _on_browser_audio(self, browser, playing):
+        """Start/stop the pulsing tab indicator when a browser tab plays sound."""
+        if playing:
+            self._start_audio_pulse(browser)
+        else:
+            self._stop_audio_pulse(browser)
+        # Track for the per-group indicator too
+        if not hasattr(self, '_audible_browsers'):
+            self._audible_browsers = set()
+        if playing:
+            self._audible_browsers.add(browser)
+        else:
+            self._audible_browsers.discard(browser)
+        self._recompute_group_audio()
+
+    def _group_of_browser(self, browser):
+        """Return the group name that owns the given browser widget."""
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.widget(i) is browser:
+                return self.current_group
+        for group, cache in self.terminal_widgets_cache.items():
+            for _, _, w in cache:
+                if w is browser:
+                    return group
+        return self.current_group
+
+    def _recompute_group_audio(self):
+        """Emit group_audio_changed for groups whose audio state changed."""
+        if not hasattr(self, '_audio_groups'):
+            self._audio_groups = set()
+        active = set()
+        for b in list(getattr(self, '_audible_browsers', ())):
+            g = self._group_of_browser(b)
+            if g:
+                active.add(g)
+        for g in active - self._audio_groups:
+            self.group_audio_changed.emit(g, True)
+        for g in self._audio_groups - active:
+            self.group_audio_changed.emit(g, False)
+        self._audio_groups = active
+
+    def _cleanup_browser_audio(self, widget):
+        """Remove a browser from audio tracking when its tab is closed."""
+        self._stop_audio_pulse(widget)
+        if hasattr(self, '_audible_browsers'):
+            self._audible_browsers.discard(widget)
+        self._recompute_group_audio()
+
+    def _start_audio_pulse(self, browser):
+        if not hasattr(self, '_audio_pulses'):
+            self._audio_pulses = {}
+        if browser in self._audio_pulses:
+            return
+        state = {'phase': 0.0}
+        timer = QTimer(self)
+
+        def tick():
+            idx = self.tab_widget.indexOf(browser)
+            if idx < 0:
+                # Tab is off-screen (e.g. another group is showing). Keep the
+                # timer alive so the pulse resumes when this group is reopened.
+                return
+            import math
+            state['phase'] += 0.14
+            # Heartbeat: intensity oscillates smoothly between 0.35 and 1.0
+            intensity = 0.35 + 0.65 * (0.5 + 0.5 * math.sin(state['phase'] * math.pi * 2))
+            self.tab_widget.setIconSize(QSize(16, 16))
+            self.tab_widget.setTabIcon(idx, self._make_audio_icon(intensity))
+
+        timer.timeout.connect(tick)
+        timer.start(60)
+        self._audio_pulses[browser] = timer
+        tick()
+
+    def _stop_audio_pulse(self, browser):
+        if hasattr(self, '_audio_pulses') and browser in self._audio_pulses:
+            self._audio_pulses[browser].stop()
+            del self._audio_pulses[browser]
+        # Restore the favicon / route dot / logo once audio stops.
+        self._refresh_browser_icon(browser)
+
+    def _make_audio_icon(self, intensity):
+        """Return a pulsing speaker QIcon for the given intensity (0-1)."""
+        from ui.browser_widget import make_audio_pulse_pixmap
+        return QIcon(make_audio_pulse_pixmap(intensity))
 
     def add_tab(self, name=None, shell=None, skip_save=False):
         """Add a new terminal tab"""
@@ -812,7 +1222,7 @@ class TerminalTabs(QWidget):
         
         # Check if tab has history file and prompt for cleanup
         if widget and hasattr(widget, 'history_file_path') and widget.history_file_path:
-            from PyQt5.QtWidgets import QMessageBox
+            from qtpy.QtWidgets import QMessageBox
             file_size = widget.get_history_file_size() if hasattr(widget, 'get_history_file_size') else "Unknown"
             
             reply = QMessageBox.question(
@@ -834,6 +1244,11 @@ class TerminalTabs(QWidget):
         is_last_tab = self.tab_widget.count() == 1
         
         self.tab_widget.removeTab(index)
+        
+        # Clean up browser audio tracking if this was a browser tab
+        from ui.browser_widget import BrowserWidget
+        if isinstance(widget, BrowserWidget):
+            self._cleanup_browser_audio(widget)
         
         # Remove from cache
         if self.current_group and self.current_group in self.terminal_widgets_cache:
@@ -941,6 +1356,7 @@ class TerminalTabs(QWidget):
         
         # Save current group's tab info and cache widgets
         if self.current_group:
+            self._active_tab_per_group[self.current_group] = self.tab_widget.currentIndex()
             self.save_and_cache_current_group()
         
         # Update current group
@@ -982,7 +1398,8 @@ class TerminalTabs(QWidget):
                     terminal_widget.resize_enabled = False
 
                 from ui.git_panel import GitPanel
-                if isinstance(terminal_widget, GitPanel):
+                from ui.browser_widget import BrowserWidget
+                if isinstance(terminal_widget, (GitPanel, BrowserWidget)):
                     tab_label = tab_name
                 else:
                     # Connect to session recorder for command capture (if not already connected)
@@ -1002,6 +1419,9 @@ class TerminalTabs(QWidget):
             for tab_data in self.tabs_per_group[group_name]:
                 if tab_data.get('tab_type') == 'git':
                     self._open_tool_tab(tab_data.get('name', 'Git'), 'git')
+                elif tab_data.get('tab_type') == 'browser':
+                    self._open_tool_tab(tab_data.get('name', 'Browser'), 'browser',
+                                        url=tab_data.get('url'))
                 else:
                     self.add_tab(tab_data['name'], tab_data.get('shell', '/bin/bash'), skip_save=True)
         
@@ -1021,9 +1441,12 @@ class TerminalTabs(QWidget):
             restored_widgets = [w for _, _, w in self.terminal_widgets_cache[group_name]]
             QTimer.singleShot(100, lambda: self.restore_widget_capabilities(restored_widgets))
         
-        # Select the first tab if any tabs exist
+        # Restore the previously-active tab for this group (fallback to first)
         if self.tab_widget.count() > 0:
-            self.tab_widget.setCurrentIndex(0)
+            target = self._active_tab_per_group.get(group_name, 0)
+            if target < 0 or target >= self.tab_widget.count():
+                target = 0
+            self.tab_widget.setCurrentIndex(target)
         
         # Update navigation buttons after loading group
         self.nav_update_timer.start(200)
@@ -1066,6 +1489,27 @@ class TerminalTabs(QWidget):
             widget = self.tab_widget.widget(i)
             if widget:
                 tab_text = self.tab_widget.tabText(i)
+
+                # Detect git panel tabs
+                from ui.git_panel import GitPanel
+                if isinstance(widget, GitPanel):
+                    clean = tab_text.strip().lstrip("⎇").strip()
+                    tabs_info.append({'name': clean or 'Git', 'tab_type': 'git'})
+                    widgets_cache.append((clean or 'Git', None, widget))
+                    continue
+
+                # Detect browser tabs
+                from ui.browser_widget import BrowserWidget
+                if isinstance(widget, BrowserWidget):
+                    clean = tab_text.strip().lstrip("🌐").strip()
+                    tabs_info.append({
+                        'name': clean or 'Browser',
+                        'tab_type': 'browser',
+                        'url': widget.current_url(),
+                    })
+                    widgets_cache.append((tab_text, None, widget))
+                    continue
+
                 shell = widget.shell if hasattr(widget, 'shell') else '/bin/bash'
                 
                 # Strip shell indicator from name
@@ -1105,6 +1549,18 @@ class TerminalTabs(QWidget):
                     clean = tab_text.strip().lstrip("⎇").strip()
                     tabs_info.append({'name': clean or 'Git', 'tab_type': 'git'})
                     widgets_cache.append((clean or 'Git', None, widget))
+                    continue
+
+                # Detect browser tabs
+                from ui.browser_widget import BrowserWidget
+                if isinstance(widget, BrowserWidget):
+                    clean = tab_text.strip().lstrip("🌐").strip()
+                    tabs_info.append({
+                        'name': clean or 'Browser',
+                        'tab_type': 'browser',
+                        'url': widget.current_url(),
+                    })
+                    widgets_cache.append((tab_text, None, widget))
                     continue
 
                 shell = widget.shell if hasattr(widget, 'shell') else '/bin/bash'
@@ -1197,7 +1653,7 @@ class TerminalTabs(QWidget):
     
     def eventFilter(self, obj, event):
         """Filter events to detect tab bar resizes and button right-clicks"""
-        from PyQt5.QtCore import QEvent, Qt
+        from qtpy.QtCore import QEvent, Qt
         
         # Safety check: ensure widgets are initialized
         if not hasattr(self, 'tab_widget') or not hasattr(self, 'left_nav_btn') or not hasattr(self, 'right_nav_btn'):
@@ -1303,6 +1759,10 @@ class TerminalTabs(QWidget):
         """Update navigation button enabled state and labels - buttons always visible"""
         # Always hide Qt's default scroll buttons
         self.hide_qt_scroll_buttons()
+
+        # Keep the minimap overview strip in sync with the tabs.
+        if hasattr(self, 'tab_minimap'):
+            self.tab_minimap.refresh()
         
         if self.tab_widget.count() <= 1:
             # No navigation needed for 0 or 1 tabs - disable buttons

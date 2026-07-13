@@ -1,13 +1,13 @@
 """Preferences dialog for application settings"""
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, 
+from qtpy.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, 
                              QWidget, QLabel, QLineEdit, QPushButton, QSpinBox,
                              QCheckBox, QComboBox, QColorDialog, QFileDialog,
                              QGroupBox, QFormLayout, QDialogButtonBox, QMessageBox,
                              QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
                              QScrollArea)
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QFont, QKeySequence, QKeyEvent
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QColor, QFont, QKeySequence, QKeyEvent
 from core.preferences_manager import PreferencesManager
 from core.platform_manager import get_platform_manager
 import os
@@ -17,7 +17,7 @@ import sys
 class PreferencesDialog(QDialog):
     """Dialog for managing application preferences"""
     
-    preferences_changed = pyqtSignal()
+    preferences_changed = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1034,7 +1034,7 @@ class PreferencesDialog(QDialog):
     
     def add_minimap_keyword(self):
         """Add a new minimap keyword"""
-        from PyQt5.QtWidgets import QInputDialog
+        from qtpy.QtWidgets import QInputDialog
         
         # Get keyword
         keyword, ok1 = QInputDialog.getText(self, "Add Keyword", "Enter keyword:")

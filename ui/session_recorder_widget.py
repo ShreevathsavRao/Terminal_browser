@@ -1,12 +1,12 @@
 """Session Recorder Widget for recording and playing back command sequences"""
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QLabel, QListWidget, QListWidgetItem, QDialog,
                              QDialogButtonBox, QLineEdit, QTextEdit, QMessageBox,
                              QGroupBox, QScrollArea, QFrame, QMenu, QFileDialog,
                              QInputDialog)
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QPalette
+from qtpy.QtCore import Qt, Signal, QTimer
+from qtpy.QtGui import QFont, QPalette
 from core.session_recorder import SessionRecorder
 
 class EditRecordingDialog(QDialog):
@@ -140,9 +140,9 @@ class SessionRecorderWidget(QWidget):
     """Widget for recording and playing back command sessions"""
     
     # Signals
-    command_executed = pyqtSignal(str)  # Emits command to execute
-    playback_started = pyqtSignal()
-    playback_stopped = pyqtSignal()
+    command_executed = Signal(str)  # Emits command to execute
+    playback_started = Signal()
+    playback_stopped = Signal()
     
     def __init__(self):
         super().__init__()
@@ -368,7 +368,7 @@ class SessionRecorderWidget(QWidget):
         
         # Try to find the main window and get current terminal
         try:
-            from PyQt5.QtWidgets import QApplication
+            from qtpy.QtWidgets import QApplication
             app = QApplication.instance()
             if app:
                 widget_count = 0
@@ -858,7 +858,7 @@ class SessionRecorderWidget(QWidget):
                         if not terminal:
                             # Try to get terminal from main window
                             try:
-                                from PyQt5.QtWidgets import QApplication
+                                from qtpy.QtWidgets import QApplication
                                 app = QApplication.instance()
                                 if app:
                                     for widget in app.allWidgets():
@@ -890,7 +890,7 @@ class SessionRecorderWidget(QWidget):
                                     terminal.execute_command(cd_command)
                                 else:
                                     # Fallback: use timer if prompt_ready signal not available
-                                    from PyQt5.QtCore import QTimer
+                                    from qtpy.QtCore import QTimer
                                     terminal.execute_command(cd_command)
                                     QTimer.singleShot(500, on_cd_complete)
                                 return
@@ -940,7 +940,7 @@ class SessionRecorderWidget(QWidget):
         # Wait for terminal to be set (via on_playback_started callback)
         # The terminal will be set by main_window.on_playback_started()
         # We use a small delay to ensure the terminal is set before executing
-        from PyQt5.QtCore import QTimer
+        from qtpy.QtCore import QTimer
         QTimer.singleShot(50, self.setup_playback_and_start)
     
     def setup_playback_and_start(self):

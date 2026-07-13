@@ -7,10 +7,29 @@ A desktop application with browser-like tabs, terminal groups, and command execu
 import sys
 import os
 import asyncio
+
+# Select the Qt binding for qtpy. PySide6 ships a modern Chromium (140+) in
+# QtWebEngine; override with QT_API=pyqt5 to fall back to the old binding.
+os.environ.setdefault("QT_API", "pyside6")
+
+# Force the Qt6 FFmpeg multimedia backend to decode in software. macOS has no
+# hardware AV1 decoder, so streams like AV1 HLS otherwise spam
+# "Your platform doesn't support hardware accelerated AV1 decoding" once per
+# frame and render black. An empty device-type list disables hw decoding and
+# lets FFmpeg fall back to its software decoders (libdav1d/libaom, etc.).
+os.environ.setdefault("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", "")
+
 from pathlib import Path
-from PyQt5.QtWidgets import QApplication, QSplashScreen, QLabel
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QIcon, QPixmap, QMovie
+from qtpy.QtWidgets import QApplication, QSplashScreen, QLabel
+from qtpy import QtCore
+from qtpy.QtCore import Qt, QCoreApplication, QTimer
+from qtpy.QtGui import QIcon, QPixmap, QMovie
+# Import QtWebEngineWidgets early (before QApplication is created) so the
+# integrated browser tool works reliably. Optional – app still runs without it.
+try:
+    from qtpy import QtWebEngineWidgets  # noqa: F401
+except ImportError:
+    pass
 import qasync
 
 from ui.main_window import MainWindow
@@ -96,13 +115,24 @@ def main():
     """Main entry point for the application"""
     # Initialize debug logging first
     init_debug_logging()
+    print("DIAG: init_debug_logging done", flush=True)
     
-    # Enable High DPI scaling
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    # Required for QtWebEngineWidgets — must be set before QApplication is created
+    QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
+    print("DIAG: AA_ShareOpenGLContexts set", flush=True)
+
+    # Enable High DPI scaling. On Qt6 this is always on and the attributes are
+    # deprecated no-ops, so only apply them on the legacy Qt5 binding.
+    if int(QtCore.__version__.split(".")[0]) < 6:
+        for _attr in ("AA_EnableHighDpiScaling", "AA_UseHighDpiPixmaps"):
+            _flag = getattr(Qt, _attr, None)
+            if _flag is not None:
+                QApplication.setAttribute(_flag, True)
+    print("DIAG: HiDPI attributes set", flush=True)
     
     debug_log('ui', 'Creating QApplication...')
     app = QApplication(sys.argv)
+    print("DIAG: QApplication created", flush=True)
     app.setApplicationName("Terminal Browser")
     app.setOrganizationName("TerminalBrowser")
     
@@ -122,14 +152,20 @@ def main():
     
     # Show splash screen
     splash = create_splash_screen()
+    print("DIAG: splash created", flush=True)
     splash.show()
+    print("DIAG: splash shown", flush=True)
     app.processEvents()
+    print("DIAG: processEvents done", flush=True)
     debug_log('ui', 'Splash screen displayed')
     
     # Create main window asynchronously
     async def create_window():
-        debug_log('ui', 'Creating main window...')
+        print("DIAG: create_window start", flush=True)
         window = MainWindow()
+        print("DIAG: MainWindow created", flush=True)
+        await window.initialize_async()
+        print("DIAG: initialize_async done", flush=True)
         
         # Initialize async components
         await window.initialize_async()

@@ -1,12 +1,12 @@
 """Command Book Widget with built-in and custom commands"""
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QLabel, QTreeWidget, QTreeWidgetItem, QTabWidget,
                              QLineEdit, QTextEdit, QDialog, QDialogButtonBox,
                              QComboBox, QSplitter, QGroupBox, QRadioButton,
                              QButtonGroup, QMessageBox, QInputDialog, QMenu)
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QIcon, QFont
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QIcon, QFont
 from core.command_library import CommandLibrary
 
 class AddCustomCommandDialog(QDialog):
@@ -72,7 +72,7 @@ class AddCustomCommandDialog(QDialog):
 class CommandBookWidget(QWidget):
     """Widget for browsing and managing command library"""
     
-    command_selected = pyqtSignal(str, str, str)  # command, name, cmd_id
+    command_selected = Signal(str, str, str)  # command, name, cmd_id
     
     def __init__(self):
         super().__init__()
@@ -573,7 +573,7 @@ class CommandBookWidget(QWidget):
     
     def copy_command(self, command):
         """Copy command to clipboard"""
-        from PyQt5.QtWidgets import QApplication
+        from qtpy.QtWidgets import QApplication
         clipboard = QApplication.clipboard()
         clipboard.setText(command)
         

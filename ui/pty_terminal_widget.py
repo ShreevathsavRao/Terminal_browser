@@ -1,9 +1,9 @@
 """PTY-based terminal widget for proper interactive command support"""
 
-from PyQt5.QtWidgets import (QTextEdit, QVBoxLayout, QHBoxLayout, QWidget, 
+from qtpy.QtWidgets import (QTextEdit, QVBoxLayout, QHBoxLayout, QWidget, 
                              QApplication, QLabel, QSpinBox, QDoubleSpinBox, QPushButton)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QEvent
-from PyQt5.QtGui import QTextCursor, QFont, QColor, QKeyEvent, QTextCharFormat
+from qtpy.QtCore import Qt, QThread, Signal, QTimer, QEvent
+from qtpy.QtGui import QTextCursor, QFont, QColor, QKeyEvent, QTextCharFormat
 import os
 import sys
 import pty
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class PTYReader(QThread):
     """Thread to read from PTY master"""
     
-    output_received = pyqtSignal(str)
+    output_received = Signal(str)
     
     def __init__(self, master_fd):
         super().__init__()
@@ -87,7 +87,7 @@ class TerminalTextEdit(QTextEdit):
 class PTYTerminalWidget(QWidget):
     """Terminal widget with PTY support for interactive commands"""
     
-    command_finished = pyqtSignal(int)
+    command_finished = Signal(int)
     
     # Maximum number of lines to keep in scrollback buffer
     # Note: This is a performance optimization - QTextEdit becomes slow with very large documents
@@ -237,7 +237,7 @@ class PTYTerminalWidget(QWidget):
     def handle_resize(self, event):
         """Handle terminal display resize"""
         # Call the original resize event
-        from PyQt5.QtWidgets import QTextEdit
+        from qtpy.QtWidgets import QTextEdit
         QTextEdit.resizeEvent(self.terminal_display, event)
         
         # Update PTY size only if resize is enabled (not during tab switching)
@@ -408,7 +408,7 @@ class PTYTerminalWidget(QWidget):
     
     def handle_mouse_press(self, event):
         """Handle mouse press to prevent cursor movement from end"""
-        from PyQt5.QtWidgets import QTextEdit
+        from qtpy.QtWidgets import QTextEdit
         
         # Allow right-click for context menu (copy/paste)
         if event.button() == Qt.RightButton:
@@ -430,7 +430,7 @@ class PTYTerminalWidget(QWidget):
     
     def handle_mouse_release(self, event):
         """Handle mouse release to move cursor back to end if no selection"""
-        from PyQt5.QtWidgets import QTextEdit
+        from qtpy.QtWidgets import QTextEdit
         
         # Call the default handler first
         QTextEdit.mouseReleaseEvent(self.terminal_display, event)
