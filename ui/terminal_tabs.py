@@ -248,7 +248,8 @@ class NewTerminalDialog(QDialog):
         )
         self.tool_list.setSpacing(2)
         # Each entry: (display text, tool key)
-        self._tools = [("⎇  Git", "git"), ("🌐  Browser", "browser")]
+        self._tools = [("⎇  Git", "git"), ("🌐  Browser", "browser"),
+                       ("🛰  API Studio", "api")]
         for display, _ in self._tools:
             item = QListWidgetItem(display)
             item.setForeground(QColor("#4ec9b0"))
@@ -772,6 +773,12 @@ class TerminalTabs(QWidget):
                         widgets_cache.append((clean or 'Git', None, widget))
                         continue
                     if isinstance(widget, BrowserWidget):
+                        if getattr(widget, 'is_api_studio', False):
+                            clean = tab_text.strip().lstrip("🛰").strip()
+                            tabs_info.append({'name': clean or 'API Studio',
+                                              'tab_type': 'api'})
+                            widgets_cache.append((tab_text, None, widget))
+                            continue
                         clean = tab_text.strip().lstrip("🌐").strip()
                         tabs_info.append({
                             'name': clean or 'Browser',
@@ -866,6 +873,25 @@ class TerminalTabs(QWidget):
                 browser.privacy.statusChanged.connect(
                     lambda mode, state, detail, b=browser:
                     self._on_browser_privacy(b, mode, state))
+            return browser
+        if tool == 'api':
+            # Postman-style API Studio: a local JS app served by a stdlib
+            # backend, displayed inside an embedded browser view.
+            from ui.browser_widget import BrowserWidget
+            try:
+                from ui.api_studio import ensure_server
+                url = ensure_server()
+            except Exception as exc:
+                print(f"API Studio backend failed to start: {exc}")
+                return None
+            browser = BrowserWidget()
+            browser.is_api_studio = True
+            browser.set_chrome_visible(False)
+            idx = self.tab_widget.addTab(browser, name or "API Studio")
+            self.tab_widget.setTabIcon(idx, self._make_api_icon())
+            self.tab_widget.setCurrentIndex(idx)
+            self.tab_widget.tabBar().setTabButton(idx, QTabBar.RightSide, self.create_close_button())
+            browser.navigate_to(url)
             return browser
         return None
 
@@ -965,6 +991,29 @@ class TerminalTabs(QWidget):
         p.drawEllipse(1, 1, 11, 11)
         p.drawEllipse(4, 1, 5, 11)   # vertical meridian
         p.drawLine(1, 6, 12, 6)       # equator
+        p.end()
+        return QIcon(pm)
+
+    def _make_api_icon(self):
+        """API Studio tab logo: a small orbiting-satellite glyph."""
+        from qtpy.QtGui import QColor, QPixmap, QPainter, QPen
+        pm = QPixmap(14, 14)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        # Orbit ring
+        pen = QPen(QColor('#4ec9b0'))
+        pen.setWidthF(1.1)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(1, 3, 12, 8)
+        # Central node
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor('#4ec9b0'))
+        p.drawEllipse(5, 5, 4, 4)
+        # Orbiting satellite dot
+        p.setBrush(QColor('#6cb2ff'))
+        p.drawEllipse(11, 5, 3, 3)
         p.end()
         return QIcon(pm)
 
@@ -1422,6 +1471,8 @@ class TerminalTabs(QWidget):
                 elif tab_data.get('tab_type') == 'browser':
                     self._open_tool_tab(tab_data.get('name', 'Browser'), 'browser',
                                         url=tab_data.get('url'))
+                elif tab_data.get('tab_type') == 'api':
+                    self._open_tool_tab(tab_data.get('name', 'API Studio'), 'api')
                 else:
                     self.add_tab(tab_data['name'], tab_data.get('shell', '/bin/bash'), skip_save=True)
         
@@ -1501,6 +1552,12 @@ class TerminalTabs(QWidget):
                 # Detect browser tabs
                 from ui.browser_widget import BrowserWidget
                 if isinstance(widget, BrowserWidget):
+                    if getattr(widget, 'is_api_studio', False):
+                        clean = tab_text.strip().lstrip("🛰").strip()
+                        tabs_info.append({'name': clean or 'API Studio',
+                                          'tab_type': 'api'})
+                        widgets_cache.append((tab_text, None, widget))
+                        continue
                     clean = tab_text.strip().lstrip("🌐").strip()
                     tabs_info.append({
                         'name': clean or 'Browser',

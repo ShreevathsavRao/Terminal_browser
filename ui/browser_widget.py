@@ -1053,6 +1053,7 @@ class BrowserWidget(QWidget):
         self.inspect_btn.clicked.connect(self.toggle_devtools)
         tb.addWidget(self.inspect_btn)
 
+        self.nav_toolbar = toolbar
         layout.addWidget(toolbar)
 
         # ── Progress bar ──────────────────────────────────────────────────
@@ -1707,6 +1708,12 @@ class BrowserWidget(QWidget):
             pass
 
     # ── Navigation helpers ────────────────────────────────────────────────
+    def set_chrome_visible(self, visible):
+        """Show/hide the navigation toolbar (used when embedding a local app)."""
+        tb = getattr(self, 'nav_toolbar', None)
+        if tb is not None:
+            tb.setVisible(visible)
+
     def navigate_to(self, text):
         """Load a URL, or run a Google search if the text isn't a URL."""
         self._teardown_inline_player()

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Studio</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/vendor/reactflow.css" />
+</head>
+<body>
+  <!-- ── Top bar ─────────────────────────────────────────────────────── -->
+  <header id="topbar">
+    <div class="brand">🛰 API&nbsp;Studio</div>
+    <div class="top-controls">
+      <label class="ctl">
+        <span>Project</span>
+        <select id="projectSelect"></select>
+      </label>
+      <button id="newProjectBtn" class="btn ghost" title="New project">＋</button>
+      <button id="deleteProjectBtn" class="btn ghost danger" title="Delete project">🗑</button>
+      <label class="ctl">
+        <span>Env</span>
+        <select id="envSelect"></select>
+      </label>
+      <span class="spacer"></span>
+      <span id="saveState" class="save-state">Saved</span>
+      <button id="saveBtn" class="btn primary">Save</button>
+    </div>
+  </header>
+
+  <!-- ── Main workspace tabs ─────────────────────────────────────────── -->
+  <nav id="viewTabs">
+    <button class="view-tab active" data-view="request">Request</button>
+    <button class="view-tab" data-view="flows">Flows</button>
+    <button class="view-tab" data-view="environments">Environments</button>
+  </nav>
+
+  <div id="workspace">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-tabs">
+        <button class="side-tab active" data-side="collections">Collections</button>
+        <button class="side-tab" data-side="history">History</button>
+      </div>
+      <div class="sidebar-actions">
+        <button id="addCollectionBtn" class="btn ghost sm">＋ Collection</button>
+        <button id="addRequestBtn" class="btn ghost sm">＋ Request</button>
+        <button id="addFlowBtn" class="btn ghost sm">＋ Flow</button>
+      </div>
+      <div id="tree" class="tree"></div>
+      <div id="historyList" class="tree" style="display:none"></div>
+    </aside>
+
+    <!-- ── Request view ─────────────────────────────────────────────── -->
+    <main id="view-request" class="view active">
+      <div class="req-bar">
+        <select id="methodSelect" class="method"></select>
+        <input id="urlInput" class="url" placeholder="https://api.example.com/endpoint" />
+        <button id="sendBtn" class="btn primary send">Send</button>
+      </div>
+
+      <div class="req-tabs">
+        <button class="req-tab active" data-tab="params">Params</button>
+        <button class="req-tab" data-tab="auth">Auth</button>
+        <button class="req-tab" data-tab="headers">Headers</button>
+        <button class="req-tab" data-tab="body">Body</button>
+      </div>
+
+      <div class="req-panels">
+        <section class="req-panel active" data-panel="params">
+          <table class="kv" id="paramsTable"></table>
+        </section>
+        <section class="req-panel" data-panel="auth">
+          <div class="auth-box">
+            <label class="ctl">
+              <span>Type</span>
+              <select id="authType">
+                <option value="none">No Auth</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+                <option value="apikey">API Key (header)</option>
+              </select>
+            </label>
+            <div id="authFields"></div>
+          </div>
+        </section>
+        <section class="req-panel" data-panel="headers">
+          <table class="kv" id="headersTable"></table>
+        </section>
+        <section class="req-panel" data-panel="body">
+          <div class="body-modes">
+            <label><input type="radio" name="bodyMode" value="none" /> None</label>
+            <label><input type="radio" name="bodyMode" value="json" checked /> JSON</label>
+            <label><input type="radio" name="bodyMode" value="raw" /> Raw</label>
+            <label><input type="radio" name="bodyMode" value="form" /> Form</label>
+          </div>
+          <textarea id="bodyText" class="body-text" placeholder='{ "key": "value" }'></textarea>
+          <table class="kv" id="formTable" style="display:none"></table>
+        </section>
+      </div>
+
+      <div class="resp-header">
+        <span class="resp-title">Response</span>
+        <span id="respStatus" class="resp-status"></span>
+        <span id="respTime" class="resp-meta"></span>
+        <span id="respSize" class="resp-meta"></span>
+      </div>
+      <div class="resp-tabs">
+        <button class="resp-tab active" data-rtab="body">Body</button>
+        <button class="resp-tab" data-rtab="headers">Headers</button>
+      </div>
+      <div class="resp-body">
+        <pre id="respBody" class="code"></pre>
+        <div id="respHeaders" class="code" style="display:none"></div>
+      </div>
+    </main>
+
+    <!-- ── Flows view ───────────────────────────────────────────────── -->
+    <main id="view-flows" class="view">
+      <div id="flowToolbar" class="flow-toolbar">
+        <span id="flowName" class="flow-name">No flow selected</span>
+        <button id="addRequestNodeBtn" class="btn ghost sm">＋ Request node</button>
+        <button id="addMockNodeBtn" class="btn ghost sm">＋ Mock node</button>
+        <span class="flow-tb-sep"></span>
+        <button id="addStartNodeBtn" class="btn ghost sm" title="Flow entry point">▶ Start</button>
+        <button id="addEndNodeBtn" class="btn ghost sm" title="Stop this path">■ End</button>
+        <button id="addWaitNodeBtn" class="btn ghost sm" title="Pause for a set time">⏱ Wait</button>
+        <button id="addConditionNodeBtn" class="btn ghost sm" title="If / Else branch">◆ If/Else</button>
+        <button id="addWhileNodeBtn" class="btn ghost sm" title="While loop">↻ While</button>
+        <button id="addForNodeBtn" class="btn ghost sm" title="For loop (fixed count)">⟳ For</button>
+        <span class="flow-tb-sep"></span>
+        <button id="autoArrangeBtn" class="btn ghost sm" title="Auto-arrange nodes">▤ Auto-arrange</button>
+        <button id="flowVarsBtn" class="btn ghost sm">Variables</button>
+        <button id="runFlowBtn" class="btn primary sm">▶ Run flow</button>
+      </div>
+      <div id="flowVarsPanel" class="flow-vars" style="display:none">
+        <div class="flow-vars-title">Flow variables (available as <code>{{key}}</code> in nodes)</div>
+        <table class="kv" id="flowVarsTable"></table>
+      </div>
+      <div id="flowCanvas" class="flow-canvas"></div>
+    </main>
+
+    <!-- ── Environments view ────────────────────────────────────────── -->
+    <main id="view-environments" class="view">
+      <div class="env-header">
+        <button id="addEnvBtn" class="btn ghost sm">＋ Environment</button>
+        <select id="envEditSelect"></select>
+        <button id="delEnvBtn" class="btn ghost sm danger">Delete</button>
+      </div>
+      <table class="kv" id="envTable"></table>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="/vendor/react.production.min.js"></script>
+  <script src="/vendor/react-dom.production.min.js"></script>
+  <script src="/vendor/reactflow.umd.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/flows.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
